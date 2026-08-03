@@ -58,10 +58,17 @@ def generate_launch_description():
         output='screen',
     )
 
+    pursuit_mode_node = Node(
+        package='interceptor',
+        executable='pursuit_mode',
+        output='screen',
+    )
+
     return LaunchDescription([
         micro_xrce_agent,
         target_vehicle_odometry_subscriber_node,
         target_tf2_odometry_node,
         interceptor_vehicle_odometry_subscriber_node,
         interceptor_tf2_odometry_node,
+        pursuit_mode_node,
     ])

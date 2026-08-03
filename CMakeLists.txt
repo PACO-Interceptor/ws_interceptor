@@ -71,7 +71,10 @@ ament_target_dependencies(tf2_listener
 add_executable(pursuit_mode src/pursuit_mode.cpp)
 ament_target_dependencies(pursuit_mode
   rclcpp
-  px4_msgs
+  tf2_ros
+  tf2
+  geometry_msgs
+  px4_ros_com
   px4_ros2_cpp
 )
 

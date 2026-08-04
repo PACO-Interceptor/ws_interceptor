@@ -78,6 +78,16 @@ ament_target_dependencies(pursuit_mode
   px4_ros2_cpp
 )
 
+add_executable(PN_mode src/PN_mode.cpp)
+ament_target_dependencies(PN_mode
+  rclcpp
+  tf2_ros
+  tf2
+  geometry_msgs
+  px4_ros_com
+  px4_ros2_cpp
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
@@ -97,6 +107,7 @@ install(TARGETS
   interceptor_tf2_odometry
   tf2_listener
   pursuit_mode
+  PN_mode
   DESTINATION lib/${PROJECT_NAME}
 )
 

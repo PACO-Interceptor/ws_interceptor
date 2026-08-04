@@ -89,9 +89,26 @@ public:
       return;
     }
 
-    // LOS rotation rate ω = (los × v_rel) / (los · los)
-    const Eigen::Vector3f los_rotation_rate = los.cross(v_rel) / (los.squaredNorm() + 1e-6f);
-    Eigen::Vector3f a_cmd = kNavigationConstant * los_rotation_rate.cross(v_rel);
+    Eigen::Vector3f a_cmd = Eigen::Vector3f::Zero();
+
+
+    if (los.norm() < kPnMinRange) {
+      a_cmd = Eigen::Vector3f::Zero();
+    }
+    else{
+      // LOS rotation rate ω = (los × v_rel) / (los · los)
+      const Eigen::Vector3f los_rotation_rate = los.cross(v_rel) / (los.squaredNorm() + 1e-6f);
+      a_cmd = kNavigationConstant * los_rotation_rate.cross(v_rel);
+      const float a_cmd_norm = a_cmd.norm();
+
+      if (a_cmd_norm > 1e-6f) {
+        // Only normalize when there's a well-defined direction; avoids 0/0 -> NaN.
+        a_cmd = a_cmd.normalized() * std::min(a_cmd_norm, kMaxAcceleration);
+      } 
+      else {
+        a_cmd = Eigen::Vector3f::Zero();
+      }
+    }
 
     const Eigen::Vector2f los_horizontal(los.x(), los.y());
     Eigen::Vector2f velocity_horizontal = Eigen::Vector2f::Zero();
@@ -133,7 +150,10 @@ private:
   static constexpr float kMaxHorizontalSpeed = 7.0f;  // [m/s]
   static constexpr float kMaxVerticalSpeed = 2.0f;    // [m/s]
   static constexpr float kMinHorizontalDistance = 0.1f;  // [m]
+
   static constexpr float kNavigationConstant = 3.5f;  // Proportional navigation constant (N/lambda)
+  static constexpr float kMaxAcceleration = 3.0f;  // [m/s^2]
+  static constexpr float kPnMinRange = 7.0f;  // [m] Minimum range for PN to be active
 
   std::shared_ptr<px4_ros2::TrajectorySetpointType> _trajectory_setpoint;
   std::shared_ptr<px4_ros2::OdometryLocalPosition> _own_position;

@@ -2,10 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>interceptor</name>
-  <version>0.0.0</version>
-  <description>Vehicle Odometry Interceptor</description>
+  <version>0.1.1</version>
+  <description>ROS2 package for target tracking and interception.</description>
   <maintainer email="davidelbahri@gmail.com">deireb</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Propietary License. Copyright (c) 2026, deireb. All rights reserved.</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

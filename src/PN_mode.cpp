@@ -46,10 +46,11 @@ public:
       [this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
         using px4_ros_com::frame_transforms::enu_to_ned_local_frame;
 
+        // Convert the received ENU velocity to NED frame
         Eigen::Vector3d velocity_enu(msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z);
         Eigen::Vector3d velocity_ned = enu_to_ned_local_frame(velocity_enu);
 
-        _target_velocity_ned = velocity_ned.cast<float>();
+        _target_velocity_ned = velocity_ned.cast<float>(); // .cast to convert from double to float
         
         _target_velocity_valid = true;
       });
@@ -101,8 +102,7 @@ public:
       a_cmd = kNavigationConstant * los_rotation_rate.cross(v_rel);
       const float a_cmd_norm = a_cmd.norm();
 
-      if (a_cmd_norm > 1e-6f) {
-        // Only normalize when there's a well-defined direction; avoids 0/0 -> NaN.
+      if (a_cmd_norm > 1e-6f) { // avoid division by zero and normalize only if the norm is significant
         a_cmd = a_cmd.normalized() * std::min(a_cmd_norm, kMaxAcceleration);
       } 
       else {

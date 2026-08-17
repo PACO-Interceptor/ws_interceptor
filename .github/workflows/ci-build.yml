@@ -1,0 +1,57 @@
+name: CI - Build Interceptor Package
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    name: Build ROS 2 Jazzy & PX4 Dependencies
+    runs-on: ubuntu-24.04
+    container:
+      image: ros:jazzy-ros-base
+
+    steps:
+      # 1. Preparar la estructura del workspace y clonar tu paquete como 'interceptor'
+      - name: Checkout interceptor repo
+        uses: actions/checkout@v4
+        with:
+          path: src/interceptor
+
+      # 2. Instalar herramientas de compilación y utilidades del sistema
+      - name: Instalar dependencias base
+        run: |
+          apt-get update
+          apt-get install -y \
+            python3-colcon-common-extensions \
+            python3-rosdep \
+            git \
+            build-essential
+          rosdep update || true
+
+      # 3. Clonar los paquetes complementarios requeridos en src/
+      - name: Clonar dependencias PX4 y Auterion
+        run: |
+          cd src
+          git clone --depth 1 https://github.com/PX4/px4_msgs.git
+          git clone --depth 1 https://github.com/PX4/px4_ros_com.git
+          git clone --depth 1 https://github.com/Auterion/px4-ros2-interface-lib.git
+
+      # 4. Resolver dependencias estándar de ROS 2 (rclcpp, tf2, tf2_ros, etc.)
+      - name: Instalar dependencias con rosdep
+        run: |
+          rosdep install --from-paths src --ignore-src -y -r --rosdistro jazzy
+
+      # 5. Compilar el paquete interceptor y sus dependencias
+      - name: Compilar con Colcon
+        run: |
+          . /opt/ros/jazzy/setup.sh
+          colcon build --packages-up-to interceptor --symlink-install --event-handlers console_direct+
+
+      # 6. Ejecutar tests (si tienes linters o tests unitarios definidos)
+      - name: Ejecutar Tests
+        run: |
+          . /opt/ros/jazzy/setup.sh
+          colcon test --packages-select interceptor --event-handlers console_direct+

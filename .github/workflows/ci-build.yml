@@ -20,7 +20,7 @@ jobs:
         with:
           path: src/interceptor
 
-      # 2. Instalar herramientas de compilación y utilidades del sistema
+      # 2. Instalar herramientas de compilación, utilidades e inicializar rosdep
       - name: Instalar dependencias base
         run: |
           apt-get update
@@ -29,7 +29,8 @@ jobs:
             python3-rosdep \
             git \
             build-essential
-          rosdep update || true
+          rosdep init || true
+          rosdep update
 
       # 3. Clonar los paquetes complementarios requeridos en src/
       - name: Clonar dependencias PX4 y Auterion
@@ -39,7 +40,7 @@ jobs:
           git clone --depth 1 https://github.com/PX4/px4_ros_com.git
           git clone --depth 1 https://github.com/Auterion/px4-ros2-interface-lib.git
 
-      # 4. Resolver dependencias estándar de ROS 2 (rclcpp, tf2, tf2_ros, etc.)
+      # 4. Resolver dependencias declaradas en todos los package.xml de src/
       - name: Instalar dependencias con rosdep
         run: |
           rosdep install --from-paths src --ignore-src -y -r --rosdistro jazzy
@@ -50,7 +51,7 @@ jobs:
           . /opt/ros/jazzy/setup.sh
           colcon build --packages-up-to interceptor --symlink-install --event-handlers console_direct+
 
-      # 6. Ejecutar tests (si tienes linters o tests unitarios definidos)
+      # 6. Ejecutar tests (si existen)
       - name: Ejecutar Tests
         run: |
           . /opt/ros/jazzy/setup.sh

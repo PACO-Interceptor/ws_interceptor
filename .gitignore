@@ -1,0 +1,17 @@
+build/
+install/
+log/
+
+# ROS 2 and Python generated files
+__pycache__/
+*.py[cod]
+
+# Local editor and environment files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/tasks.json
+*.swp
+
+# Compiled artifacts
+*.o
+*.so

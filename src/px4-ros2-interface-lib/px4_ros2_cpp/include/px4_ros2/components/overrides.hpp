@@ -1,0 +1,44 @@
+/****************************************************************************
+ * Copyright (c) 2023 PX4 Development Team.
+ * SPDX-License-Identifier: BSD-3-Clause
+ ****************************************************************************/
+
+#pragma once
+
+#include <px4_msgs/msg/config_overrides.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+#include "shared_subscription.hpp"
+
+namespace px4_ros2 {
+
+class ModeBase;
+class ModeExecutorBase;
+
+class ConfigOverrides {
+ public:
+  explicit ConfigOverrides(rclcpp::Node& node, const std::string& topic_namespace_prefix = "");
+
+  void controlAutoDisarm(bool enabled);
+
+ private:
+  void update();
+
+  friend class ModeBase;
+  friend class ModeExecutorBase;
+  void controlAutoSetHome(bool enabled);
+  void deferFailsafes(bool enabled, int timeout_s = 0);
+  void setup(uint8_t type, uint8_t id);
+
+  rclcpp::Node& _node;
+
+  px4_msgs::msg::ConfigOverrides _current_overrides{};
+  rclcpp::Publisher<px4_msgs::msg::ConfigOverrides>::SharedPtr _config_overrides_pub;
+  bool _is_setup{false};
+  bool _require_update_after_setup{false};
+
+  rclcpp::TimerBase::SharedPtr _confirm_timer;
+  SharedSubscriptionCallbackInstance _config_overrides_confirm_sub;
+};
+
+}  // namespace px4_ros2

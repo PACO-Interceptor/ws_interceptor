@@ -1,25 +1,40 @@
 name: Release & Semantic Tagging
 
 on:
-  push:
-    branches: [main, master]
+  workflow_run:
+    workflows: ["CI - Build ROS 2 workspace"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  tag:
+  release:
     name: Generate Tag & Release
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Create semantic tag
+      - name: Generate semantic tag
+        id: tagger
         uses: anothrNick/github-tag-action@1.67.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEFAULT_BUMP: patch
           WITH_V: true
+          DEFAULT_BUMP: none
+
+      - name: Create GitHub Release
+        if: steps.tagger.outputs.new_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tagger.outputs.new_tag }}
+          name: Release ${{ steps.tagger.outputs.new_tag }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

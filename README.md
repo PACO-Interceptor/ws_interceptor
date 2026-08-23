@@ -15,12 +15,9 @@ Workspace ROS 2 para el seguimiento e interceptación de un vehículo usando dat
 ```bash
 git clone https://github.com/Deireb/ws_interceptor.git
 cd ws_interceptor
-git clone https://github.com/PX4/px4_msgs.git src/px4_msgs
-git clone https://github.com/PX4/px4_ros_com.git src/px4_ros_com
-git clone https://github.com/Auterion/px4-ros2-interface-lib.git src/px4-ros2-interface-lib
 ```
 
-Este repositorio ya incluye el paquete propio `interceptor` en `src/interceptor`.
+El repositorio ya incluye el paquete propio `interceptor` y las dependencias PX4 necesarias dentro de `src/`.
 
 ## Instalar dependencias y compilar
 

@@ -19,7 +19,7 @@ public:
   : Node("tf2_frame_listener")
   {
     rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;
-	auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);
+    auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);
 
     // Declare and acquire `target_frame` parameter
     target_frame_ = this->declare_parameter<std::string>("target_frame", "target/base_link");
@@ -31,13 +31,14 @@ public:
 
     // Subscribe to target odometry to keep the latest velocity
     subscription_ =
-      this->create_subscription<px4_msgs::msg::VehicleOdometry>("/px4_1/fmu/out/vehicle_odometry", qos,
+      this->create_subscription<px4_msgs::msg::VehicleOdometry>("/px4_1/fmu/out/vehicle_odometry",
+      qos,
         [this](const px4_msgs::msg::VehicleOdometry::UniquePtr msg) {
           target_velocity_[0] = msg->velocity[0];
           target_velocity_[1] = msg->velocity[1];
           target_velocity_[2] = msg->velocity[2];
         });
-        
+
     // Call on_timer function every second
     timer_ = this->create_wall_timer(
       1s, std::bind(&FrameListener::on_timer, this));
@@ -54,7 +55,7 @@ private:
     geometry_msgs::msg::TransformStamped t;
 
     try {
-        t = tf_buffer_->lookupTransform(
+      t = tf_buffer_->lookupTransform(
         toFrameRel, fromFrameRel,
         tf2::TimePointZero);
     } catch (const tf2::TransformException & ex) {

@@ -3,9 +3,9 @@
  * @file PN_mode.cpp
  * @addtogroup interceptor
  * @author David Rodriguez <david.rodriguez.elbahri@uvigo.gal>
- * @details This mode implements a Proportional Navigation (PN) pursuit algorithm for a PX4-based vehicle. 
- * The mode subscribes to the target's position and velocity, calculates the line-of-sight (LOS) vector, 
- * and generates velocity setpoints to pursue the target while maintaining a safe distance. 
+ * @details This mode implements a Proportional Navigation (PN) pursuit algorithm for a PX4-based vehicle.
+ * The mode subscribes to the target's position and velocity, calculates the line-of-sight (LOS) vector,
+ * and generates velocity setpoints to pursue the target while maintaining a safe distance.
  * The mode also handles arming and run conditions, ensuring that the vehicle only operates when valid target data is available.
  */
 
@@ -39,20 +39,23 @@ public:
 
     _target_frame = node.declare_parameter<std::string>("target_frame", "target/base_link");
     _target_lookup_timer = node.create_wall_timer(50ms, [this] {updateTargetPosition();});
-    _target_velocity_topic = node.declare_parameter<std::string>("target_velocity_topic", "target/velocity");
+    _target_velocity_topic = node.declare_parameter<std::string>("target_velocity_topic",
+      "target/velocity");
 
     // Subscribe to the target's velocity topic. ENU to NED conversion is done in the callback.
-    _target_velocity_sub = node.create_subscription<geometry_msgs::msg::TwistStamped>(_target_velocity_topic, 10,
-      [this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
-        using px4_ros_com::frame_transforms::enu_to_ned_local_frame;
+    _target_velocity_sub =
+      node.create_subscription<geometry_msgs::msg::TwistStamped>(_target_velocity_topic, 10,
+        [this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+          using px4_ros_com::frame_transforms::enu_to_ned_local_frame;
 
         // Convert the received ENU velocity to NED frame
-        Eigen::Vector3d velocity_enu(msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z);
-        Eigen::Vector3d velocity_ned = enu_to_ned_local_frame(velocity_enu);
+          Eigen::Vector3d velocity_enu(msg->twist.linear.x, msg->twist.linear.y,
+        msg->twist.linear.z);
+          Eigen::Vector3d velocity_ned = enu_to_ned_local_frame(velocity_enu);
 
-        _target_velocity_ned = velocity_ned.cast<float>(); // .cast to convert from double to float
-        
-        _target_velocity_valid = true;
+          _target_velocity_ned = velocity_ned.cast<float>(); // .cast to convert from double to float
+
+          _target_velocity_valid = true;
       });
 
     _tf_buffer = std::make_unique<tf2_ros::Buffer>(node.get_clock());
@@ -95,8 +98,7 @@ public:
 
     if (los.norm() < kPnMinRange) {
       a_cmd = Eigen::Vector3f::Zero();
-    }
-    else{
+    } else {
       // LOS rotation rate ω = (los × v_rel) / (los · los)
       const Eigen::Vector3f los_rotation_rate = los.cross(v_rel) / (los.squaredNorm() + 1e-6f);
       a_cmd = kNavigationConstant * los_rotation_rate.cross(v_rel);
@@ -104,8 +106,7 @@ public:
 
       if (a_cmd_norm > 1e-6f) { // avoid division by zero and normalize only if the norm is significant
         a_cmd = a_cmd.normalized() * std::min(a_cmd_norm, kMaxAcceleration);
-      } 
-      else {
+      } else {
         a_cmd = Eigen::Vector3f::Zero();
       }
     }

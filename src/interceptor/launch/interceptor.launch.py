@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 
 """
-Launch file para el escenario interceptor/target:
-  - Agente Micro-XRCE-DDS (puente uXRCE-DDS <-> ROS 2)
-  - Los 4 nodos del paquete interceptor
-  (el dron 0 y el dron 1 se lanzan a mano, cada uno en su propia terminal,
-  dron 0 (interceptor) make px4_sitl gz_x500
-  dron1 (target) PX4_SIM_MODEL=gz_x500 /build/px4_sitl_default/bin/px4 -i 1
-  para tener control manual e interactivo de ambos)
+Launch file para el escenario interceptor/target.
+
+- Agente Micro-XRCE-DDS (puente uXRCE-DDS <-> ROS 2)
+- Los 4 nodos del paquete interceptor
+(el dron 0 y el dron 1 se lanzan a mano, cada uno en su propia terminal,
+dron 0 (interceptor) make px4_sitl gz_x500
+dron1 (target) PX4_SIM_MODEL=gz_x500 /build/px4_sitl_default/bin/px4 -i 1
+para tener control manual e interactivo de ambos)
 """
 
 import os
@@ -52,11 +53,11 @@ def generate_launch_description():
         output='screen',
     )
 
-    tf2_listener_node = Node(
-        package='interceptor',
-        executable='tf2_listener',
-        output='screen',
-    )
+    # tf2_listener_node = Node(
+    #     package='interceptor',
+    #     executable='tf2_listener',
+    #     output='screen',
+    # )
 
     pursuit_mode_node = Node(
         package='interceptor',

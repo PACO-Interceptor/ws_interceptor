@@ -52,9 +52,7 @@ El lanzador espera encontrar Micro XRCE-DDS Agent en `~/Micro-XRCE-DDS-Agent` y 
 
 Los directorios `build/`, `install/` y `log/` se generan localmente y no forman parte del repositorio.
 
-## Documentación para nuevos colaboradores
+## Wiki
 
 La [wiki introductoria local](docs/wiki/Home.md) explica paso a paso cómo
 preparar el workspace, ejecutar la simulación y entender el papel de cada nodo.
-Está pensada para personas que se incorporan al proyecto y todavía no dominan
-ROS 2, tf2 o PX4.

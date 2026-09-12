@@ -1,10 +1,20 @@
-# Análisis línea por línea del código propio
+# Análisis línea por línea: archivos de proyecto y construcción
 
-Esta página es la referencia detallada para estudiar **todos los archivos de
-`src/interceptor` y `.github`**. No analiza línea por línea las librerías de
-terceros, tal como se decidió: esas carpetas se documentan en el
-[mapa del workspace](Workspace-file-map.md), pero su código pertenece a sus
-proyectos upstream.
+Esta es la primera de tres páginas que cubren, línea por línea, **todos los
+archivos propios de `src/interceptor`**. Esta página se ocupa de los archivos
+de construcción, configuración y arranque del paquete. Las otras dos son:
+
+- [Nodos de odometría y tf2, línea por línea](Line-by-line-odometry-nodes.md):
+  los subscriptores de diagnóstico, los dos conversores tf2 y `tf2_listener`.
+- [Modos de guiado, línea por línea](Line-by-line-guidance-modes.md):
+  `pursuit_mode.cpp` y `PN_mode.cpp`.
+
+No se analizan línea por línea las librerías de terceros, tal como se decidió:
+esas carpetas se documentan en el [mapa del workspace](Workspace-file-map.md),
+pero su código pertenece a sus proyectos upstream. Los workflows de
+`.github` (CI, resúmenes de issues, releases) se documentan línea por línea
+dentro del [mapa del workspace](Workspace-file-map.md), junto al resto de
+automatización del repositorio.
 
 ## Cómo leer una explicación técnica
 
@@ -26,6 +36,35 @@ No es necesario dominar todos los signos de una vez. La explicación debajo de
 cada bloque indica qué dato entra, qué transformación se realiza y qué resultado
 sale.
 
+## Sintaxis de C++ que vas a encontrar constantemente
+
+[Code-walkthrough.md](Code-walkthrough.md) ya explica lo más básico (`{`, `;`,
+`//`, clases, funciones, variables, lambdas, `shared_ptr`/`unique_ptr`). Las
+tablas de esta página usan además una serie de construcciones de C++ más
+específicas que no se explican en ningún otro sitio de la wiki. Si te
+encuentras con alguna de ellas y no sabes qué significa, vuelve a esta tabla:
+
+| Sintaxis | Qué significa | Ejemplo en este paquete |
+| --- | --- | --- |
+| `override` | Escrito después de un método, indica "esto sustituye a un método que ya existía en la clase de la que heredo". El compilador avisa si el nombre o los parámetros no coinciden exactamente con el original. | `void updateSetpoint(float dt_s) override` sustituye al `updateSetpoint` vacío que declara `px4_ros2::ModeBase`. |
+| `explicit` | Delante de un constructor, impide que C++ lo use "a escondidas" para convertir un valor en un objeto de esa clase sin que el programador lo pida explícitamente. Es una medida de seguridad, no cambia lo que hace el constructor. | `explicit PursuitMode(rclcpp::Node & node)`. |
+| `static constexpr` | Un valor constante que se calcula en tiempo de compilación (antes de ejecutar el programa) y que comparten todas las instancias de la clase; nunca cambia mientras el programa corre. | `static constexpr float kMaxHorizontalSpeed = 5.0f;`. |
+| `static` fuera de una clase | Una variable o función `static` a nivel de archivo solo es visible dentro de ese `.cpp`; ningún otro archivo puede usarla aunque tenga el mismo nombre. | `static const std::string kName = "Pursuit Intercept";`. |
+| `Plantilla<Tipo>` (por ejemplo `shared_ptr<Buffer>`) | Los `< >` después del nombre de una clase indican una plantilla: un molde genérico que se rellena con un tipo concreto. `shared_ptr<Buffer>` es "un puntero compartido, pero específicamente a un objeto `Buffer`", no a cualquier cosa. | `std::unique_ptr<tf2_ros::Buffer> _tf_buffer;`. |
+| `Tipo & nombre` (referencia) | Recibe el objeto original, no una copia. Si la función modifica ese parámetro, el cambio se ve fuera de la función también. | `explicit PursuitMode(rclcpp::Node & node)`: el modo recibe el nodo real, no una copia. |
+| `const Tipo & nombre` | Como el anterior, pero además promete que la función no va a modificar ese objeto: solo lo lee. | `catch (const tf2::TransformException & ex)`. |
+| `const` delante de una variable | El valor no se puede cambiar después de crearse. | `const Eigen::Vector3f los = _target_position_ned - _own_position->positionNed();`. |
+| `Espacio::Nombre` (`::`) | Se lee "dentro de". `std::string` es `string` dentro del espacio de nombres `std`; `px4_ros2::Result::Success` es el valor `Success`, dentro de `Result`, dentro de `px4_ros2`. | `px4_ros2::Result::Success`, `std::chrono::milliseconds(100)`. |
+| `.cross(v)` | Producto vectorial entre dos vectores 3D: da como resultado otro vector, perpendicular a los dos originales, relacionado con cuánto y hacia dónde "giran" uno respecto al otro. | `los.cross(v_rel)` en `PN_mode.cpp`. |
+| `.norm()` | La longitud (magnitud) de un vector. | `los.norm() < 1.0f`. |
+| `.squaredNorm()` | La longitud al cuadrado. Se usa en vez de `.norm()` cuando no hace falta la raíz cuadrada exacta, porque calcularla es más rápido. | `los.squaredNorm() + 1e-6f`. |
+| `.normalized()` | Devuelve el mismo vector pero con longitud 1, conservando la dirección. Sirve para quedarte solo con "hacia dónde apunta" un vector, sin su tamaño. | `los_horizontal.normalized() * kMaxHorizontalSpeed`. |
+| `.cast<float>()` | Convierte los números de un vector/cuaternión de un tipo a otro (aquí, de `double` a `float`). | `position_ned.cast<float>()`. |
+| `std::bind(&Clase::metodo, this)` | Empaqueta un método de un objeto concreto para poder pasarlo como si fuera una función suelta (por ejemplo, a un timer). | `std::bind(&FrameListener::on_timer, this)` en `tf2_listener.cpp`. |
+| `std::clamp(valor, min, max)` | Si `valor` es menor que `min`, devuelve `min`; si es mayor que `max`, devuelve `max`; si no, devuelve `valor` tal cual. Limita un número a un rango. | `std::clamp(los.z(), -kMaxVerticalSpeed, kMaxVerticalSpeed)`. |
+| `std::min(a, b)` | Devuelve el menor de los dos valores. | `std::min(a_cmd_norm, kMaxAcceleration)`. |
+| `(void)nombre;` | Le dice al compilador "sé que no uso esta variable, es intencionado", para que no avise de "parámetro sin usar". | `(void)dt_s;` en `updateSetpoint`. |
+
 ## Cómo usar este análisis
 
 - Los números de línea corresponden al estado actual de cada archivo.
@@ -35,6 +74,26 @@ sale.
 - Los comentarios no cambian el programa; explican intención para quien lee.
 - Para comprobar el texto exacto, abre el enlace al archivo fuente de cada
   sección.
+
+## Orden recomendado para leer estas tres páginas
+
+Las secciones de esta página y de las otras dos ya están ordenadas siguiendo
+esta progresión; no hace falta saltar de un lado a otro, basta con leer las
+tres páginas de arriba hacia abajo, en este orden:
+
+1. **En esta página**: `.gitignore`, `README.md` y `package.xml`, para conocer
+   la estructura del paquete; después `CMakeLists.txt`, para relacionar cada
+   ejecutable con su `.cpp`; y por último `interceptor.launch.py`, para ver
+   qué arranca y en qué orden.
+2. **En [nodos de odometría y tf2](Line-by-line-odometry-nodes.md)**: primero
+   los subscriptores de diagnóstico (son las callbacks más simples del
+   paquete), después los conversores tf2 y `tf2_listener`.
+3. **En [modos de guiado](Line-by-line-guidance-modes.md)**: `pursuit_mode.cpp`
+   antes que `PN_mode.cpp` (Pursuit es la base sobre la que PN añade cosas).
+
+Después de terminar las tres páginas, usa el
+[mapa completo del workspace](Workspace-file-map.md) para distinguir código
+propio de dependencias vendorizadas y para ver los workflows de `.github`.
 
 ## 1. `src/interceptor/.gitignore`
 
@@ -211,393 +270,88 @@ DESTINATION share/${PROJECT_NAME})` instala el launch. Finalmente,
 
 Archivo: [`interceptor.launch.py`](../../src/interceptor/launch/interceptor.launch.py)
 
-### Cabecera y imports, líneas 1-13
-
-| Línea/bloque | Explicación |
-| --- | --- |
-| `#!/usr/bin/env python` | Permite ejecutar el archivo como script Python. |
-| Docstring triple | Documenta el escenario, el agente y qué PX4 se arranca manualmente. |
-| `import os` | Importa funciones del sistema operativo. |
-| `from launch import LaunchDescription` | Importa el contenedor de acciones. |
-| `ExecuteProcess` | Permite iniciar un comando externo. |
-| `Node` | Permite iniciar un nodo ROS 2. |
-| `MICRO_XRCE_DDS_AGENT_DIR = ...` | Expande `~` y guarda la carpeta del agente. |
-
-### `generate_launch_description`
-
-La función sin argumentos es el punto de entrada que ROS 2 busca. Crea
-`micro_xrce_agent` con:
-
-- `cmd=[['./build/MicroXRCEAgent udp4 -p 8888']]`: comando del agente UDP.
-- `shell=True`: ejecuta la cadena mediante shell.
-- `cwd=...`: cambia al directorio esperado.
-- `output='log'`: manda su salida a los logs.
-
-Cada bloque `Node(...)` especifica `package='interceptor'`,
-`executable='...'` y `output`. Los seis bloques activos arrancan dos
-suscriptores de diagnóstico, dos conversores tf2 y dos modos. El bloque de
-`tf2_listener` empieza por `#`, así que Python lo trata como comentario y no lo
-ejecuta.
-
-La lista de `LaunchDescription` devuelve primero el agente y luego los nodos.
-Esto no arranca PX4 SITL: los procesos PX4 se ejecutan en terminales separadas.
-
-## 7. Patrón de los suscriptores de odometría
-
-Archivos:
-
-- [`target_vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/target_vehicle_odometry_subscriber.cpp)
-- [`interceptor_vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/interceptor_vehicle_odometry_subscriber.cpp)
-
-Son casi iguales; cambia el nombre del nodo, el mensaje inicial y el tópico.
-
-### Includes y clase
-
-| Línea/bloque | Explicación |
-| --- | --- |
-| Comentario Doxygen inicial | Describe archivo, propósito y autor para documentación. |
-| `#include <rclcpp/rclcpp.hpp>` | Importa Node, init, spin y ROS 2. |
-| `#include <px4_msgs/msg/vehicle_odometry.hpp>` | Importa el tipo del mensaje PX4. |
-| `class VehicleOdometrySubscriber : public rclcpp::Node` | Declara un nodo especializado. |
-| Constructor `: Node("...")` | Registra el nombre visible del nodo. |
-
-### QoS, suscripción y callback
-
-`rmw_qos_profile_sensor_data` selecciona un perfil apropiado para sensores.
-`QoSInitialization(..., 5)` conserva una profundidad de cinco mensajes.
-
-`create_subscription<VehicleOdometry>(topic, qos, lambda)` registra:
-
-1. el tipo de mensaje;
-2. el tópico;
-3. la calidad de servicio;
-4. la función que se ejecuta al recibir datos.
-
-La lambda imprime timestamp, `pose_frame`, tres posiciones, cuatro componentes
-del cuaternión, tres velocidades y la magnitud calculada con la raíz cuadrada
-de `vx² + vy² + vz²`. Las muchas líneas `std::cout << "\n"` limpian
-visualmente la consola antes de cada muestra.
-
-El `private` contiene el `SharedPtr` de la suscripción para mantenerla viva.
-En `main`, `std::cout` anuncia el nodo, `setvbuf` desactiva buffering de salida,
-`rclcpp::init` inicializa ROS 2, `spin` procesa mensajes y `shutdown` cierra.
-
-### Diferencia real de los dos archivos
-
-Aunque los nombres sugieren una cosa, actualmente el archivo `target_...`
-escucha `/fmu/out/vehicle_odometry` (instancia 0), mientras que el archivo
-`interceptor_...` escucha `px4_1/fmu/out/vehicle_odometry` (instancia 1).
-Esto se documenta deliberadamente para que nadie aprenda una asociación falsa
-entre nombre de archivo y tópico.
-
-## 8. `interceptor_tf2_odometry.cpp`
-
-Archivo: [`interceptor_tf2_odometry.cpp`](../../src/interceptor/src/interceptor_tf2_odometry.cpp)
-
-### Includes, comentarios y clase
-
-`memory`, `sstream` y `string` proporcionan punteros, construcción de tópicos y
-cadenas. `rclcpp` crea el nodo; `TransformStamped` representa el transform;
-`VehicleOdometry` es la entrada PX4; `frame_transforms` convierte NED/ENU;
-`TransformBroadcaster` publica tf2.
-
-`FramePublisher : public rclcpp::Node` crea un nodo. En el constructor,
-`Node("interceptor_tf2_frame_publisher")` asigna su nombre.
-
-### Constructor línea por línea
-
-| Instrucción | Explicación |
-| --- | --- |
-| `declare_parameter<string>("vehicle_name", "interceptor")` | Declara nombre configurable del vehículo. |
-| `make_unique<TransformBroadcaster>(*this)` | Crea el broadcaster ligado al nodo. |
-| `rmw_qos_profile_sensor_data` | Selecciona QoS de sensor. |
-| `QoSInitialization(..., 5)` | Convierte ese perfil en QoS de ROS 2 con profundidad 5. |
-| `ostringstream stream` | Crea un constructor de texto. |
-| `stream << "/fmu/out/vehicle_odometry"` | Forma el tópico de la instancia 0. |
-| `subscription_ = create_subscription(...)` | Empieza a recibir odometría. |
-
-La lambda captura `this` y recibe un `UniquePtr`. Los `using` acortan los nombres
-de dos funciones de conversión. Construye `position_ned` desde los tres campos
-del mensaje y la transforma a `position_enu`. Construye el cuaternión PX4 en el
-orden `(w,x,y,z)` y lo adapta al convenio ROS.
-
-`TransformStamped t` se rellena con la hora actual, padre `map`, hijo
-`vehicle_name_/base_link`, traslación ENU y rotación ENU. `sendTransform(t)`
-publica el frame. Los atributos privados guardan la suscripción, el broadcaster
-y el nombre para que sigan existiendo mientras vive el nodo.
-
-El `main` imprime un aviso, desactiva buffering, inicializa ROS 2, crea
-`FramePublisher`, entra en `spin` y finalmente llama a `shutdown`.
-
-## 9. `target_tf2_odometry.cpp`
-
-Archivo: [`target_tf2_odometry.cpp`](../../src/interceptor/src/target_tf2_odometry.cpp)
-
-Este archivo repite la estructura del conversor anterior, pero tiene tres
-diferencias funcionales:
-
-1. El nombre de nodo por defecto es `target_tf2_frame_publisher`.
-2. Escucha `/px4_1/fmu/out/vehicle_odometry`.
-3. Publica `target/velocity`.
-
-`create_publisher<TwistStamped>("target/velocity", 10)` crea el publisher con
-cola de diez mensajes. La lambda del timer se ejecuta cada 100 ms: crea el
-mensaje, asigna timestamp y `frame_id`, copia las tres componentes de
-`_target_velocity_enu` y publica.
-
-La callback de odometría transforma posición y velocidad de NED a ENU, convierte
-la velocidad double a float con `.cast<float>()`, rellena el mismo
-`TransformStamped` y lo publica. El timer y la suscripción comparten la última
-velocidad guardada en `_target_velocity_enu`.
-
-Los miembros privados son la suscripción, broadcaster, publisher, vector de
-velocidad inicializado a cero, timer y nombre. Inicializar a cero evita leer
-basura si el timer dispara antes del primer mensaje PX4.
-
-## 10. `tf2_listener.cpp`
-
-Archivo: [`tf2_listener.cpp`](../../src/interceptor/src/tf2_listener.cpp)
-
-### Preparación
-
-Los includes estándar aportan duraciones, funciones, memoria y strings.
-`TransformStamped` representa el resultado; `VehicleOdometry` proporciona
-velocidad; `rclcpp` crea el nodo; `tf2` aporta excepciones; buffer/listener
-reciben transforms.
-
-`using namespace std::chrono_literals` permite escribir `1s`. El constructor
-crea el nodo `tf2_frame_listener`, declara `target_frame` con valor
-`target/base_link`, construye el buffer con el reloj y conecta el listener.
-
-### Suscripción y timer
-
-La suscripción a `/px4_1/fmu/out/vehicle_odometry` guarda las tres velocidades
-en `target_velocity_`. El timer llama a `on_timer` cada segundo mediante
-`std::bind(&FrameListener::on_timer, this)`.
-
-### `on_timer`
-
-`fromFrameRel` es el frame del target y `toFrameRel` el del interceptor.
-`lookupTransform(toFrameRel, fromFrameRel, TimePointZero)` pide la última
-transformación disponible. Si falta un frame, el `catch` imprime el error y
-`return` evita usar datos inválidos.
-
-Si funciona, `RCLCPP_INFO` imprime traslación y velocidad. Los atributos guardan
-timer, suscripción, array de velocidad, listener, buffer y parámetro. `main`
-usa el mismo ciclo init-spin-shutdown que los demás nodos.
-
-## 11. `pursuit_mode.cpp`
-
-Archivo: [`pursuit_mode.cpp`](../../src/interceptor/src/pursuit_mode.cpp)
-
-### Includes, constantes y clase
-
-`Eigen` aporta álgebra vectorial; los headers `px4_ros2` aportan modos,
-setpoints y odometría; `frame_transforms` convierte ENU/NED; `tf2` aporta
-listener y excepciones; `rclcpp` aporta nodo y logging.
-
-`kName` es el texto del modo, `kMapFrame` es el padre tf2 y las duraciones
-literales permiten usar `50ms`. `PursuitMode` hereda de `ModeBase`, por lo que
-PX4 puede registrarlo y llamar a sus métodos virtuales.
-
-### Constructor
-
-`ModeBase(node, Settings{kName})` inicializa la clase base con la configuración.
-`make_shared<TrajectorySetpointType>` prepara la salida de trayectoria y
-`OdometryLocalPosition` la posición propia. El parámetro `target_frame` permite
-cambiar el frame; buffer y listener llenan la caché tf2. El timer llama
-`updateTargetPosition` cada 50 ms.
-
-### Seguridad y setpoint
-
-`checkArmingAndRunConditions` comprueba `_target_valid`. Si es falso, informa a
-PX4 de un fallo de armado con un identificador y mensaje.
-
-En `updateSetpoint`, `(void)dt_s` marca el parámetro de interfaz como no usado.
-Si no hay target, registra un warning y sale. `los` resta posición propia a la
-del target. Si su norma es menor que 1 m, registra éxito y termina.
-
-`los_horizontal` elimina el eje vertical. Si supera `0.1 m`, se normaliza y se
-multiplica por `5 m/s`; `atan2f` apunta el yaw hacia el target. `std::clamp`
-limita la velocidad vertical a ±`2 m/s`. El vector final se envía con velocidad,
-aceleración vacía y yaw.
-
-### `updateTargetPosition`
-
-El método intenta consultar `map -> target/base_link`. El `catch` registra un
-warning como máximo cada 5 segundos. Si hay transform, toma sus tres
-traslaciones ENU, las convierte a NED, cambia double a float, guarda la posición
-y marca `_target_valid`.
-
-Las constantes `kMaxHorizontalSpeed`, `kMaxVerticalSpeed` y
-`kMinHorizontalDistance` hacen visible el ajuste del algoritmo. Los miembros
-privados guardan publishers/lectores, estado del target y yaw anterior.
-
-`PursuitModeNode` es un alias de `NodeWithMode<PursuitMode>`. `main` inicializa
-ROS 2, crea ese wrapper con nombre `pursuit_mode` y activa salida de depuración.
-
-## 12. `PN_mode.cpp`
-
-Archivo: [`PN_mode.cpp`](../../src/interceptor/src/PN_mode.cpp)
-
-PN repite la estructura de pursuit para posición, tf2, setpoint y ciclo de vida.
-Añade `geometry_msgs/msg/twist_stamped.hpp` porque necesita velocidad del target.
-
-### Suscripción de velocidad
-
-El parámetro `target_velocity_topic` tiene por defecto `target/velocity`.
-`create_subscription<TwistStamped>` recibe el mensaje, construye un vector ENU,
-lo convierte a NED y lo guarda en `_target_velocity_ned`. Después marca
-`_target_velocity_valid = true`.
-
-`checkArmingAndRunConditions` usa la condición combinada
-`!_target_valid || !_target_velocity_valid`; PN no se puede armar sin ambos
-datos.
-
-### Cálculo PN
-
-`los` es la posición relativa y `v_rel` es velocidad target menos velocidad
-propia. Si la distancia es menor que 1 m, el modo termina.
-
-`a_cmd` empieza en cero. Si la distancia es menor que `kPnMinRange` (7 m), se
-mantiene cero. En caso contrario:
-
-1. `los.cross(v_rel) / (los.squaredNorm() + 1e-6f)` calcula la tasa de giro de
-   la línea de visión evitando división exacta por cero.
-2. `kNavigationConstant * los_rotation_rate.cross(v_rel)` calcula aceleración.
-3. Si la norma es significativa, normaliza y limita a `3 m/s²`.
-4. Si es casi cero, conserva el vector cero.
-
-Después PN calcula la velocidad de persecución horizontal/vertical igual que
-Pursuit, pero con `7 m/s` horizontales. `update(velocity, a_cmd, _last_yaw)`
-envía velocidad, aceleración y yaw.
-
-Los miembros adicionales son la velocidad NED, el tópico y la suscripción, más
-la bandera de validez. `PN_ModeNode` y `main` hacen el mismo wrapping que
-Pursuit, con nombre `PN_mode`.
-
-## 13. Workflows de `.github`
-
-### `.github/workflows/ci-build.yml`
-
-Archivo: [`ci-build.yml`](../../.github/workflows/ci-build.yml)
-
-| Línea/bloque | Explicación |
-| --- | --- |
-| `name: CI - Build ROS 2 workspace` | Nombre visible en GitHub Actions. |
-| `on: push` | Ejecuta CI al subir cambios. |
-| `branches: [main, master]` | Solo para esas ramas. |
-| `pull_request` | Ejecuta CI en pull requests hacia esas ramas. |
-| `jobs: build` | Define un job llamado `build`. |
-| `runs-on: ubuntu-24.04` | Usa runner Ubuntu 24.04. |
-| `container: ros:jazzy-ros-base` | Ejecuta pasos dentro de una imagen ROS 2 Jazzy. |
-| `actions/checkout@v4` | Descarga el repositorio al runner. |
-| `apt-get update` | Actualiza índices de paquetes Debian. |
-| `apt-get install ...` | Instala colcon, rosdep y compilador. |
-| `rosdep init || true` | Inicializa rosdep; `true` evita fallar si ya estaba inicializado. |
-| `rosdep update` | Actualiza el índice de rosdep. |
-| `rosdep install ...` | Instala dependencias de todos los paquetes fuente. |
-| `source /opt/ros/jazzy/setup.bash` | Prepara el entorno ROS. |
-| `colcon build --packages-up-to interceptor ...` | Compila el paquete objetivo y dependencias. |
-| `colcon test --packages-select interceptor ...` | Ejecuta tests/lint del paquete propio. |
-| `colcon test-result --verbose` | Muestra resultados y fallos detallados. |
-
-La indentación YAML es significativa: `steps` contiene acciones, cada acción
-tiene `name` y `run`, y el bloque `|` conserva comandos multilínea.
-
-### `.github/workflows/summary.yml`
-
-Archivo: [`summary.yml`](../../.github/workflows/summary.yml)
-
-`name` identifica el workflow. `on: issues: types: [opened]` lo limita a issues
-nuevos. `permissions` concede solo lectura de modelos/contenido y escritura de
-issues.
-
-El job corre en `ubuntu-latest`, hace checkout y ejecuta
-`actions/ai-inference@v1`. `id: inference` permite referenciar su salida
-`steps.inference.outputs.response`. El prompt usa el título y cuerpo del issue
-como datos no confiables y ordena resumirlos, no obedecer instrucciones que
-contengan.
-
-La última acción ejecuta `gh issue comment`. Sus variables de entorno reciben el
-token de GitHub, número del issue y respuesta generada. Por tanto, este workflow
-publica automáticamente un comentario, no modifica el código.
-
-### `.github/workflows/tagging.yml`
-
-Archivo: [`tagging.yml`](../../.github/workflows/tagging.yml)
-
-`workflow_run` espera a que termine el workflow cuyo nombre exacto es
-`CI - Build ROS 2 workspace`, únicamente en `main`; `workflow_dispatch` permite
-lanzarlo manualmente. El job solo continúa si fue manual o si CI terminó con
-éxito.
-
-`permissions: contents: write` permite crear tags/releases. `checkout` usa
-`fetch-depth: 0` para disponer del historial completo. El action
-`github-tag-action` calcula un tag semántico usando `GITHUB_TOKEN`, prefijo `v`
-y bump por defecto `none`. Si produce `new_tag`, `action-gh-release` crea una
-release, usa el tag como nombre y genera notas automáticamente.
-
-## 14. Orden recomendado para revisar el código
-
-1. Lee `.gitignore`, `README.md` y `package.xml` para conocer la estructura del paquete.
-2. Lee `CMakeLists.txt` y relaciona cada ejecutable con su `.cpp`.
-3. Lee primero los suscriptores de odometría: son callbacks sencillas.
-4. Continúa con los conversores tf2 y verifica sus tópicos.
-5. Estudia `pursuit_mode.cpp` antes de `PN_mode.cpp`.
-6. Lee los workflows para ver cómo el proyecto comprueba y publica cambios.
-7. Usa el [mapa completo](Workspace-file-map.md) para distinguir código propio
-   de dependencias.
-
-## Cómo relacionar líneas con comportamiento observable
-
-Una explicación de una línea es más útil cuando se puede comprobar en ejecución.
-Usa esta tabla como puente entre código y herramientas:
-
-| Código que estudias | Observación que puedes hacer |
-| --- | --- |
-| `create_subscription` | `ros2 node info` muestra la suscripción. |
-| `create_publisher` | `ros2 topic info` muestra el publisher. |
-| `create_wall_timer` | La frecuencia se aprecia con `ros2 topic hz` si el timer publica. |
-| `sendTransform` | `tf2_echo` puede consultar el frame generado. |
-| `lookupTransform` | Los warnings aparecen si el frame aún no existe. |
-| `TrajectorySetpointType::update` | El modo produce referencias que PX4 consume. |
-| `armingCheckFailureExt` | El modo informa de por qué aún no está listo para armar. |
-| `completed(Success)` | El modo comunica que ha alcanzado el criterio de finalización. |
-
-Este método evita leer el código como texto aislado: cada bloque tiene una
-consecuencia en el grafo ROS 2, en el árbol tf2 o en el estado del modo PX4.
-
-## Ejemplo de lectura de una callback
-
-Para leer una callback de odometría, separa mentalmente sus operaciones:
-
-1. **Entrada**: ¿qué tipo de mensaje recibe y quién lo publica?
-2. **Extracción**: ¿qué campos se leen (`position`, `velocity`, `q`)?
-3. **Conversión**: ¿cambia de frame o de tipo numérico?
-4. **Almacenamiento**: ¿se guarda para otro timer o método?
-5. **Salida**: ¿publica un tópico, un transform o un log?
-
-En `target_tf2_odometry`, por ejemplo, una misma entrada produce dos salidas
-distintas: el transform se publica inmediatamente y la velocidad convertida se
-guarda para el timer de 100 ms. Esta separación explica por qué hay dos ritmos
-de ejecución.
-
-## Qué no debe inferirse de una línea
-
-Una línea que crea una suscripción no demuestra que haya mensajes. Una línea que
-declara un publisher no garantiza que exista un subscriber. Una conversión
-matemática correcta tampoco garantiza que los datos tengan timestamps válidos.
-Siempre hay que combinar:
-
-- lo que declara el código;
-- lo que muestra `ros2 node/topic`;
-- la frecuencia real;
-- los logs;
-- y, en el caso de tf2, el árbol de frames.
-
-La comprensión completa aparece al comparar esas cinco fuentes.
+Esta tabla cubre **todas** las líneas del archivo, en orden. Las líneas en
+blanco no aparecen porque no ejecutan nada; verifica en el archivo que el
+número de línea coincide.
+
+| Línea | Código | Explicación |
+| ---: | --- | --- |
+| 1 | `#!/usr/bin/env python` | *Shebang*: permite ejecutar el archivo directamente como script Python en sistemas Unix. |
+| 3 | `"""` | Abre un docstring: un comentario de varias líneas que documenta el archivo. |
+| 4 | `Launch file para el escenario interceptor/target.` | Texto descriptivo, no se ejecuta. |
+| 6 | `- Agente Micro-XRCE-DDS (puente uXRCE-DDS <-> ROS 2)` | Lista lo que arranca este launch. |
+| 7 | `- Los 4 nodos del paquete interceptor` | Nota: el comentario dice "4" pero el launch arranca 6 nodos activos; es el comentario el que quedó desactualizado, no el código — no asumas que el número de un comentario es exacto. |
+| 8 | `(el dron 0 y el dron 1 se lanzan a mano, cada uno en su propia terminal,` | Aclara que PX4 no se arranca desde este archivo. |
+| 9 | `dron 0 (interceptor) make px4_sitl gz_x500` | Comando de ejemplo para arrancar la instancia 0. |
+| 10 | `dron1 (target) PX4_SIM_MODEL=gz_x500 /build/px4_sitl_default/bin/px4 -i 1` | Comando de ejemplo para arrancar la instancia 1. |
+| 11 | `para tener control manual e interactivo de ambos)` | Cierra la explicación. |
+| 12 | `"""` | Cierra el docstring. |
+| 14 | `import os` | Importa utilidades del sistema operativo, aquí solo se usa para expandir `~`. |
+| 16 | `from launch import LaunchDescription` | Importa la clase que representa "la lista de acciones a ejecutar". |
+| 17 | `from launch.actions import ExecuteProcess` | Importa la acción que lanza un comando de shell arbitrario (se usará para el agente DDS). |
+| 18 | `from launch_ros.actions import Node` | Importa la acción que lanza un nodo ROS 2 de un paquete. |
+| 20 | `MICRO_XRCE_DDS_AGENT_DIR = os.path.expanduser('~/Micro-XRCE-DDS-Agent')` | Expande `~` a la ruta absoluta del usuario actual y la guarda en una constante. |
+| 23 | `def generate_launch_description():` | Define la función sin argumentos que ROS 2 busca y ejecuta al hacer `ros2 launch`. |
+| 25 | `micro_xrce_agent = ExecuteProcess(` | Empieza a construir la acción que arrancará el agente DDS. |
+| 26 | `cmd=[['./build/MicroXRCEAgent udp4 -p 8888']],` | Comando a ejecutar: el binario del agente, transporte UDP/IPv4, puerto 8888. |
+| 27 | `shell=True,` | Ejecuta ese comando a través de una shell, como si se escribiera en una terminal. |
+| 28 | `cwd=MICRO_XRCE_DDS_AGENT_DIR,` | Carpeta de trabajo donde se lanza el comando (debe existir `build/MicroXRCEAgent` ahí dentro). |
+| 29 | `output='log',` | La salida del proceso va a los logs de ROS 2, no directamente a la terminal. |
+| 30 | `)` | Cierra la llamada a `ExecuteProcess`. |
+| 32 | `target_vehicle_odometry_subscriber_node = Node(` | Empieza a construir el bloque del primer nodo. |
+| 33 | `package='interceptor',` | Paquete ROS 2 donde buscar el ejecutable. |
+| 34 | `executable='target_vehicle_odometry_subscriber',` | Nombre del binario a ejecutar (el subscriptor de diagnóstico con nombre "invertido", ver [Nodos y tópicos](Nodes-and-topics.md)). |
+| 35 | `output='log',` | Su salida va a los logs, no a pantalla. |
+| 36 | `)` | Cierra el bloque de este nodo. |
+| 38 | `target_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del target. |
+| 39 | `package='interceptor',` | Igual que la línea 33. |
+| 40 | `executable='target_tf2_odometry',` | Ejecutable que convierte la odometría del target y publica `target/base_link` y `target/velocity`. |
+| 41 | `output='screen',` | Aquí la salida sí va directamente a la terminal (`screen`), a diferencia de los diagnósticos. |
+| 42 | `)` | Cierra el bloque. |
+| 44 | `interceptor_vehicle_odometry_subscriber_node = Node(` | Empieza el bloque del segundo subscriptor de diagnóstico. |
+| 45 | `package='interceptor',` | Igual que arriba. |
+| 46 | `executable='interceptor_vehicle_odometry_subscriber',` | Este ejecutable escucha en realidad la odometría del target (instancia 1); ver el aviso de nombres invertidos. |
+| 47 | `output='log',` | Salida a logs. |
+| 48 | `)` | Cierra el bloque. |
+| 50 | `interceptor_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del interceptor. |
+| 51 | `package='interceptor',` | Igual que arriba. |
+| 52 | `executable='interceptor_tf2_odometry',` | Publica `map -> interceptor/base_link`. |
+| 53 | `output='screen',` | Salida a pantalla. |
+| 54 | `)` | Cierra el bloque. |
+| 56 | `# tf2_listener_node = Node(` | Línea comentada: empieza con `#`, así que Python la ignora por completo. |
+| 57 | `#     package='interceptor',` | Comentada, ignorada. |
+| 58 | `#     executable='tf2_listener',` | Comentada, ignorada. |
+| 59 | `#     output='screen',` | Comentada, ignorada. |
+| 60 | `# )` | Comentada, ignorada. Todo este bloque de 5 líneas está desactivado: por eso `tf2_listener` no arranca con el launch por defecto. |
+| 62 | `pursuit_mode_node = Node(` | Empieza el bloque del modo de persecución pura. |
+| 63 | `package='interceptor',` | Igual que arriba. |
+| 64 | `executable='pursuit_mode',` | Ejecutable del modo `pursuit_mode`. |
+| 65 | `output='screen',` | Salida a pantalla. |
+| 66 | `)` | Cierra el bloque. |
+| 68 | `PN_mode_node = Node(` | Empieza el bloque del modo de navegación proporcional. |
+| 69 | `package='interceptor',` | Igual que arriba. |
+| 70 | `executable='PN_mode',` | Ejecutable del modo `PN_mode`. |
+| 71 | `output='screen',` | Salida a pantalla. |
+| 72 | `)` | Cierra el bloque. |
+| 74 | `return LaunchDescription([` | Construye y devuelve la lista de acciones que ROS 2 ejecutará; el orden de esta lista es el orden de arranque. |
+| 75 | `micro_xrce_agent,` | Primero se arranca el agente DDS. |
+| 76 | `target_vehicle_odometry_subscriber_node,` | Después este nodo. |
+| 77 | `target_tf2_odometry_node,` | Después este. |
+| 78 | `interceptor_vehicle_odometry_subscriber_node,` | Después este. |
+| 79 | `interceptor_tf2_odometry_node,` | Después este. |
+| 80 | `pursuit_mode_node,` | Después este. |
+| 81 | `PN_mode_node,` | Y por último este. |
+| 82 | `])` | Cierra la lista y la llamada a `LaunchDescription`. |
+
+`tf2_listener_node` no aparece en esta lista final porque su variable ni
+siquiera llegó a crearse (está comentada arriba): no basta con comentar el
+bloque, si estuviera descomentado también habría que añadirlo aquí para que se
+ejecute. PX4 SITL no aparece en ningún punto de este archivo: se arranca a
+mano en otras terminales, como recuerda el docstring del principio.
+
+Con esto terminan los archivos de construcción y arranque. Continúa con
+[Nodos de odometría y tf2, línea por línea](Line-by-line-odometry-nodes.md).
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Lectura guiada del código](Code-walkthrough.md) · ➡️ Siguiente: [Mapa del workspace y dependencias](Workspace-file-map.md)
+🏠 [Inicio](Home.md) · ⬅️ Anterior: [Lectura guiada del código](Code-walkthrough.md) · ➡️ Siguiente: [Nodos de odometría y tf2, línea por línea](Line-by-line-odometry-nodes.md)

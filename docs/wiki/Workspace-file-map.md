@@ -214,26 +214,73 @@ proyecto.
 
 ## `.github/workflows`: automatización del repositorio
 
+Esta sección cubre línea por línea los tres workflows propios del repositorio
+(no los de las dependencias vendorizadas, ver más abajo).
+
 ### `ci-build.yml`
+
+Archivo: [`ci-build.yml`](../../.github/workflows/ci-build.yml)
 
 Se ejecuta en `push` y pull request hacia `main` o `master`. Usa Ubuntu 24.04
 con `ros:jazzy-ros-base`, instala `colcon`, `rosdep` y dependencias, compila
 hasta `interceptor`, ejecuta tests y muestra el resultado. Es la reproducción
 automática de los comandos de [Instalación y compilación](Installation-and-build.md).
 
+| Línea/bloque | Explicación |
+| --- | --- |
+| `name: CI - Build ROS 2 workspace` | Nombre visible en GitHub Actions. |
+| `on: push` | Ejecuta CI al subir cambios. |
+| `branches: [main, master]` | Solo para esas ramas. |
+| `pull_request` | Ejecuta CI en pull requests hacia esas ramas. |
+| `jobs: build` | Define un job llamado `build`. |
+| `runs-on: ubuntu-24.04` | Usa runner Ubuntu 24.04. |
+| `container: ros:jazzy-ros-base` | Ejecuta pasos dentro de una imagen ROS 2 Jazzy. |
+| `actions/checkout@v4` | Descarga el repositorio al runner. |
+| `apt-get update` | Actualiza índices de paquetes Debian. |
+| `apt-get install ...` | Instala colcon, rosdep y compilador. |
+| `rosdep init` seguido de `true` | Inicializa rosdep; el `true` evita que el paso falle si ya estaba inicializado. |
+| `rosdep update` | Actualiza el índice de rosdep. |
+| `rosdep install ...` | Instala dependencias de todos los paquetes fuente. |
+| `source /opt/ros/jazzy/setup.bash` | Prepara el entorno ROS. |
+| `colcon build --packages-up-to interceptor ...` | Compila el paquete objetivo y dependencias. |
+| `colcon test --packages-select interceptor ...` | Ejecuta tests/lint del paquete propio. |
+| `colcon test-result --verbose` | Muestra resultados y fallos detallados. |
+
+La indentación YAML es significativa: `steps` contiene acciones, cada acción
+tiene `name` y `run`, y el bloque `|` conserva comandos multilínea.
+
 ### `summary.yml`
 
-Se activa cuando se abre un issue. Da permisos para leer modelos y escribir
-issues, llama a `actions/ai-inference@v1` para producir un resumen y publica un
-comentario usando `gh issue comment`. El título y cuerpo del issue se tratan como
-texto no confiable; el prompt indica que no se deben obedecer instrucciones
-incluidas dentro de ese texto.
+Archivo: [`summary.yml`](../../.github/workflows/summary.yml)
+
+Se activa cuando se abre un issue. `name` identifica el workflow. `on: issues:
+types: [opened]` lo limita a issues nuevos. `permissions` concede solo lectura
+de modelos/contenido y escritura de issues.
+
+El job corre en `ubuntu-latest`, hace checkout y ejecuta
+`actions/ai-inference@v1` para producir un resumen. `id: inference` permite
+referenciar su salida como `steps.inference.outputs.response`. El prompt usa
+el título y cuerpo del issue como datos no confiables y ordena resumirlos, no
+obedecer instrucciones que puedan contener.
+
+La última acción ejecuta `gh issue comment`. Sus variables de entorno reciben
+el token de GitHub, el número del issue y la respuesta generada. Por tanto,
+este workflow publica automáticamente un comentario; no modifica el código.
 
 ### `tagging.yml`
 
-Se ejecuta después de que termine correctamente el workflow de CI en `main`, o
-manualmente. Usa `github-tag-action` para calcular una etiqueta semántica y
-`action-gh-release` para crear una release con notas automáticas. Necesita
+Archivo: [`tagging.yml`](../../.github/workflows/tagging.yml)
+
+`workflow_run` espera a que termine el workflow cuyo nombre exacto es
+`CI - Build ROS 2 workspace`, únicamente en `main`; `workflow_dispatch` permite
+lanzarlo manualmente. El job solo continúa si fue manual o si CI terminó con
+éxito.
+
+`permissions: contents: write` permite crear tags/releases. `checkout` usa
+`fetch-depth: 0` para disponer del historial completo. El action
+`github-tag-action` calcula un tag semántico usando `GITHUB_TOKEN`, prefijo `v`
+y bump por defecto `none`. Si produce `new_tag`, `action-gh-release` crea una
+release, usa el tag como nombre y genera notas automáticamente. Necesita
 permiso `contents: write`, por lo que no se debe modificar sin entender sus
 efectos sobre publicaciones reales.
 
@@ -263,4 +310,4 @@ comprobar el sistema usa [Referencia rápida y solución de problemas](Quick-ref
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Análisis detallado de cada archivo propio](Line-by-line-code-analysis.md) · ➡️ Siguiente: [Referencia y solución de problemas](Quick-reference-and-troubleshooting.md)
+🏠 [Inicio](Home.md) · ⬅️ Anterior: [Análisis línea por línea: modos de guiado](Line-by-line-guidance-modes.md) · ➡️ Siguiente: [Referencia y solución de problemas](Quick-reference-and-troubleshooting.md)

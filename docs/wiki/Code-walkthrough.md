@@ -465,4 +465,4 @@ Estas diferencias son más importantes que memorizar la sintaxis de cada include
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Modos de guiado](Guidance-modes.md) · ➡️ Siguiente: [Análisis línea por línea del código propio](Line-by-line-code-analysis.md)
+🏠 [Inicio](Home.md) · ⬅️ Anterior: [Modos de guiado](Guidance-modes.md) · ➡️ Siguiente: [Análisis línea por línea: proyecto y construcción](Line-by-line-code-analysis.md)

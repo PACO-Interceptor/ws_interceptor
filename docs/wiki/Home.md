@@ -16,6 +16,37 @@ modos de vuelo personalizados.
 PX4 publica odometría, los nodos la convierten y la relacionan mediante tf2, y
 un modo de guiado calcula un setpoint que PX4 intenta seguir.
 
+## Resumen en una página
+
+Si esta es tu primera vez aquí y solo quieres entender la idea general antes
+de leer las 9 páginas en detalle, esto es lo esencial:
+
+- Hay dos drones simulados con PX4: el **interceptor** (el que persigue) y el
+  **target** (el perseguido).
+- Cada PX4 publica su posición y velocidad (`VehicleOdometry`) en un tópico
+  ROS 2 distinto: instancia `0` para el interceptor, instancia `1` para el
+  target.
+- Dos nodos (`interceptor_tf2_odometry`, `target_tf2_odometry`) convierten
+  esos datos de las coordenadas de PX4 (NED) a las de ROS (ENU) y publican el
+  resultado como transforms tf2: "dónde está cada dron respecto a un origen
+  común llamado `map`".
+- El nodo del target también publica su velocidad en un tópico aparte
+  (`target/velocity`), porque tf2 solo guarda posición y orientación, no
+  velocidad.
+- Dos modos de vuelo (`pursuit_mode` y `PN_mode`) leen esa posición —y, en el
+  caso de PN, también la velocidad— y calculan hacia dónde debe moverse el
+  interceptor. Se lo entregan a PX4 como un *setpoint* (una referencia de
+  velocidad/aceleración); PX4 se encarga de moverlo de verdad.
+- `pursuit_mode` es el más simple: apunta directo hacia la posición actual
+  del target. `PN_mode` es más sofisticado: anticipa el movimiento del
+  target usando su velocidad (navegación proporcional).
+- Nada de esto arranca PX4 por ti: hay que lanzar las dos simulaciones PX4 a
+  mano y después el `launch` de este proyecto.
+
+Con esto ya tienes la idea general. El resto de la wiki explica cada pieza
+con más detalle, con diagramas y con los comandos exactos para instalar,
+ejecutar y depurar.
+
 ## Recorrido recomendado
 
 La documentación está ordenada para seguir el sistema de extremo a extremo:

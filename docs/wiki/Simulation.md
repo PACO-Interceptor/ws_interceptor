@@ -32,6 +32,29 @@ del ordenador para que el agente reciba datos.
 
 Abre terminales separadas y carga ROS 2 y el workspace cuando corresponda.
 
+```mermaid
+%%{init: {"theme": "dark"}}%%
+sequenceDiagram
+    participant T1 as Terminal 1 (PX4 interceptor)
+    participant T2 as Terminal 2 (PX4 target)
+    participant T3 as Terminal 3 (launch del proyecto)
+
+    T1->>T1: make px4_sitl gz_x500 (instancia 0)
+    Note over T1: esperar a que termine el arranque
+    T2->>T2: PX4_SIM_MODEL=gz_x500 ... px4 -i 1 (instancia 1)
+    Note over T2: esperar a que termine el arranque
+    T3->>T3: ros2 launch interceptor interceptor.launch.py
+    T3->>T3: arranca Micro XRCE-DDS Agent (udp4, puerto 8888)
+    T3->>T3: arranca conversores tf2, diagnóstico y modos de vuelo
+    T1-->>T3: VehicleOdometry (instancia 0)
+    T2-->>T3: VehicleOdometry (instancia 1)
+```
+
+El orden importa: si el launch arranca antes que las dos instancias PX4, sus
+nodos simplemente no reciben odometría todavía y esperan; si el agente DDS no
+está corriendo, ninguna de las dos instancias PX4 llega a ROS 2 aunque estén
+"arrancadas".
+
 ### 1. Iniciar PX4 del interceptor
 
 En el directorio de PX4:

@@ -402,6 +402,32 @@ sola vez. El orden real es:
 6. PX4 llama `checkArmingAndRunConditions` y `updateSetpoint` durante el ciclo
    del modo.
 
+```mermaid
+%%{init: {"theme": "dark"}}%%
+sequenceDiagram
+    participant Main as main()
+    participant ROS as rclcpp
+    participant Nodo as PursuitModeNode
+    participant PX4 as PX4 (ModeBase)
+
+    Main->>ROS: rclcpp::init(argc, argv)
+    Main->>Nodo: make_shared<PursuitModeNode>()
+    Nodo->>Nodo: constructor: crea timer 50 ms,<br/>buffer/listener tf2, lector de odometría
+    Main->>ROS: rclcpp::spin(nodo)
+    loop mientras el proceso sigue vivo
+        ROS-->>Nodo: tick del timer (50 ms) -> updateTargetPosition()
+        PX4-->>Nodo: checkArmingAndRunConditions()
+        PX4-->>Nodo: updateSetpoint(dt_s)
+        Nodo-->>PX4: TrajectorySetpointType::update(...)
+    end
+    Main->>ROS: rclcpp::shutdown()
+```
+
+No existe una sola llamada que "ejecute el algoritmo de arriba abajo": el
+timer, `checkArmingAndRunConditions` y `updateSetpoint` se disparan en momentos
+distintos, controlados por `spin`, no por el orden en que están escritos en el
+archivo.
+
 Este modelo de eventos es diferente de un programa que contiene un `while` con
 todo el algoritmo. Para depurar, pregunta siempre qué evento ha ejecutado la
 línea: llegada de odometría, tick del timer, consulta de PX4 o mensaje de

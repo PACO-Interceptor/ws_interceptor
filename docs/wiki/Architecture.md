@@ -7,25 +7,27 @@ necesita.
 
 ## Visión general
 
-```text
-PX4 interceptor (instancia 0) ── VehicleOdometry ──> interceptor_tf2_odometry
-                                                           │
-                                                           └── map -> interceptor/base_link
+```mermaid
+%%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
+flowchart LR
+    PX4I["PX4 interceptor<br/>(instancia 0)"] -->|VehicleOdometry| TFI[interceptor_tf2_odometry]
+    TFI -->|"map -> interceptor/base_link"| TF2[("árbol tf2")]
 
-PX4 target (instancia 1) ────── VehicleOdometry ──> target_tf2_odometry
-                                                           │
-                                                           ├── map -> target/base_link
-                                                           └── target/velocity
+    PX4T["PX4 target<br/>(instancia 1)"] -->|VehicleOdometry| TFT[target_tf2_odometry]
+    TFT -->|"map -> target/base_link"| TF2
+    TFT -->|target/velocity| VEL["tópico target/velocity"]
 
-tf2 target position + target/velocity ──> pursuit_mode / PN_mode
-                                             │
-                                             └── TrajectorySetpoint ──> PX4 interceptor
+    TF2 -->|posición del target| MODE["pursuit_mode / PN_mode"]
+    VEL -->|velocidad del target| MODE
+    MODE -->|TrajectorySetpoint| PX4I
 ```
 
-Las flechas no significan llamadas directas entre funciones. Representan
-publicación y consumo de datos: un proceso publica un mensaje, DDS lo entrega y
-otro proceso ejecuta su callback. tf2 funciona como un almacén distribuido de
-relaciones entre frames.
+Cada caja es un programa o un dato publicado; cada flecha es "esto produce
+aquello, que otro programa consume después". Las flechas no significan
+llamadas directas entre funciones. Representan publicación y consumo de
+datos: un proceso publica un mensaje, DDS lo entrega y otro proceso ejecuta
+su callback. tf2 funciona como un almacén distribuido de relaciones entre
+frames.
 
 Un **proceso** es un programa que está ejecutándose. “Publicar” significa
 enviar un dato con un nombre; “consumir” significa recibirlo para usarlo.
@@ -69,6 +71,31 @@ ROS 2 y tf2 trabajan aquí con **ENU**:
 - `x`: este.
 - `y`: norte.
 - `z`: arriba.
+
+```mermaid
+%%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
+flowchart LR
+    subgraph NED["PX4 (NED)"]
+        direction TB
+        Nx["x = norte"]
+        Ny["y = este"]
+        Nz["z = abajo"]
+    end
+    subgraph ENU["ROS 2 / tf2 (ENU)"]
+        direction TB
+        Ex["x = este"]
+        Ey["y = norte"]
+        Ez["z = arriba"]
+    end
+    Nx -.->|misma dirección física| Ey
+    Ny -.->|misma dirección física| Ex
+    Nz -.->|dirección invertida| Ez
+```
+
+Ningún eje conserva su letra: el `x` de NED es norte, pero el `x` de ENU es
+este. Solo `z` conserva la misma letra en ambos sistemas y, aun así, apunta en
+direcciones opuestas. Esta es la razón por la que una conversión de frame no es
+opcional ni cosmética.
 
 Los nodos `*_tf2_odometry` usan `px4_ros_com::frame_transforms` para convertir
 posición, velocidad y orientación. Después publican:

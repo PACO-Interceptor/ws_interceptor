@@ -76,6 +76,27 @@ normaliza y se multiplica por `5 m/s`; la componente vertical se limita a
 `2 m/s`. Si el target está casi exactamente encima, no se recalcula el yaw
 horizontal y se conserva el último yaw válido.
 
+### De la posición al setpoint, paso a paso
+
+```mermaid
+%%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
+flowchart LR
+    A["los = posición_target - posición_propia"] --> B{"¿norm(los) < 1 m?"}
+    B -->|sí| C["completed(Success)"]
+    B -->|no| D["los_horizontal = los sin el eje vertical"]
+    D --> E{"¿norm(los_horizontal) > 0.1 m?"}
+    E -->|sí| F["velocidad_horizontal =<br/>normalizar(los_horizontal) × 5 m/s<br/>yaw = atan2(los_horizontal)"]
+    E -->|no| G["se conserva el último yaw válido"]
+    D --> H["velocidad_vertical =<br/>clamp(los.z, -2 m/s, 2 m/s)"]
+    F --> I["TrajectorySetpointType::update(velocidad, sin aceleración, yaw)"]
+    H --> I
+    G --> I
+```
+
+Este diagrama es literalmente el cuerpo de `updateSetpoint` en
+`pursuit_mode.cpp`, sin código: cada caja es una línea o un pequeño grupo de
+líneas, y cada flecha es el orden real en que se ejecutan.
+
 ## `PN_mode`: navegación proporcional
 
 Este modo usa:
@@ -99,6 +120,33 @@ proporcional. Sus límites actuales son:
 PN no puede funcionar correctamente si `target_tf2_odometry` no publica
 `target/velocity`. El modo también bloquea el armado hasta recibir posición y
 velocidad.
+
+### Cómo se calcula la aceleración PN
+
+```mermaid
+%%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
+flowchart TD
+    LOS["los = posición_target - posición_propia"]
+    VREL["v_rel = velocidad_target - velocidad_propia"]
+    LOS --> NORM{"¿norm(los) < 1 m?"}
+    NORM -->|sí| DONE["completed(Success)"]
+    NORM -->|no| RANGE{"¿norm(los) < kPnMinRange (7 m)?"}
+    RANGE -->|sí| ZERO["a_cmd = 0<br/>(solo se envía la persecución)"]
+    RANGE -->|no| OMEGA["ω = (los × v_rel) / (norm²(los) + 1e-6)<br/>giro de la línea de visión"]
+    VREL --> OMEGA
+    OMEGA --> ACMD["a_cmd = kNavigationConstant × (ω × v_rel)"]
+    ACMD --> CLAMP{"¿norm(a_cmd) > kMaxAcceleration (3 m/s²)?"}
+    CLAMP -->|sí| LIMIT["a_cmd se normaliza y se recorta a 3 m/s²"]
+    CLAMP -->|no| KEEP["a_cmd se mantiene igual"]
+    ZERO --> OUT["TrajectorySetpointType::update(velocidad, a_cmd, yaw)"]
+    LIMIT --> OUT
+    KEEP --> OUT
+```
+
+La velocidad horizontal/vertical de persecución (igual que en `pursuit_mode`,
+pero con `7 m/s` en vez de `5 m/s`) siempre se calcula y se envía; `a_cmd` es
+un extra que solo se activa por encima de `kPnMinRange`. Por eso PN nunca deja
+de perseguir aunque la aceleración PN esté desactivada.
 
 ### Intuición de navegación proporcional
 

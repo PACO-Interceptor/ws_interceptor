@@ -34,6 +34,44 @@ prefijo de nombres que evita que dos copias choquen entre sí.
 Los suscriptores de odometría son herramientas de inspección, no forman parte
 del cálculo de control. `tf2_listener` está comentado en el launch por defecto.
 
+## Grafo de nodos y tópicos
+
+```mermaid
+%%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
+flowchart LR
+    subgraph PX0["PX4 interceptor (instancia 0)"]
+        O0["/fmu/out/vehicle_odometry"]
+    end
+    subgraph PX1["PX4 target (instancia 1)"]
+        O1["/px4_1/fmu/out/vehicle_odometry"]
+    end
+
+    O0 --> ITF[interceptor_tf2_odometry]
+    O0 -->|"⚠️ nombre invertido"| TVS["target_vehicle_odometry_subscriber<br/>(diagnóstico)"]
+
+    O1 --> TTF[target_tf2_odometry]
+    O1 -->|"⚠️ nombre invertido"| IVS["interceptor_vehicle_odometry_subscriber<br/>(diagnóstico)"]
+
+    ITF --> TFI[("map -> interceptor/base_link")]
+    TTF --> TFT[("map -> target/base_link")]
+    TTF --> VEL["/target/velocity"]
+
+    TFT --> PURSUIT[pursuit_mode]
+    TFT --> PN[PN_mode]
+    VEL --> PN
+
+    TFI --> LISTENER["tf2_listener<br/>(comentado en el launch)"]
+    TFT --> LISTENER
+    O1 --> LISTENER
+```
+
+Las flechas marcadas con ⚠️ son el detalle que conviene recordar: el
+ejecutable llamado `target_vehicle_odometry_subscriber` en realidad escucha la
+odometría del **interceptor** (instancia 0), y
+`interceptor_vehicle_odometry_subscriber` escucha la del **target** (instancia
+1). Es un desajuste entre nombre de archivo y tópico real, no un error de este
+diagrama.
+
 ## Tabla de entradas y salidas
 
 | Nodo | Entrada | Salida |

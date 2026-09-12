@@ -151,13 +151,13 @@ algoritmo del interceptor.
 
 La relación entre paquetes puede imaginarse como una cadena:
 
-```text
-px4_msgs
-    └── px4_ros_com
-            └── interceptor
-px4_msgs
-    └── px4_ros2_cpp
-            └── interceptor
+```mermaid
+%%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
+flowchart LR
+    MSGS[px4_msgs] --> ROSCOM[px4_ros_com]
+    MSGS --> ROS2CPP[px4_ros2_cpp]
+    ROSCOM --> INTERCEPTOR[interceptor]
+    ROS2CPP --> INTERCEPTOR
 ```
 
 `px4_msgs` define tipos. `px4_ros_com` usa esos tipos y ofrece conversiones.

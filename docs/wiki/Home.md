@@ -62,7 +62,7 @@ La documentación está ordenada para seguir el sistema de extremo a extremo:
 
 ## Glosario mínimo
 
-Nueve palabras que se repiten en toda la wiki. No sustituyen a las
+Doce palabras que se repiten en toda la wiki. No sustituyen a las
 explicaciones de cada página, pero sirven para no perderse si llegas
 directamente a una página intermedia sin leer el resumen de arriba:
 
@@ -72,11 +72,14 @@ directamente a una página intermedia sin leer el resumen de arriba:
 | Modo (de vuelo) | Estrategia de guiado registrada en PX4 (`pursuit_mode`, `PN_mode`). No es lo mismo que un nodo, aunque cada modo se implementa dentro de uno — fíjate bien: "nodo" y "modo" solo se diferencian en una letra. |
 | Tópico | Canal con nombre por el que se intercambian mensajes. |
 | Mensaje | Estructura de datos que viaja por un tópico. |
+| Callback | Función que no llamas tú: se la entregas a ROS 2 (al suscribirte a un tópico, al crear un timer...) y es ROS 2 quien la ejecuta automáticamente cada vez que llega un mensaje o dispara el temporizador. |
+| DDS | Protocolo que reparte los mensajes entre nodos sin que se conozcan directamente entre sí. PX4 usa una versión ligera (uXRCE-DDS) que el Micro XRCE-DDS Agent traduce al DDS que hablan los nodos ROS 2. |
 | Frame (marco) | Sistema de referencia con nombre (`map`, `interceptor/base_link`, `target/base_link`) que tf2 usa para ubicar cada vehículo. |
 | tf2 | Sistema que relaciona posiciones y orientaciones entre marcos. |
 | Odometría | Posición, orientación y velocidad estimadas. |
 | Setpoint | Referencia de movimiento que se entrega a PX4. |
-| SITL | PX4 ejecutado como software para simular un vehículo. |
+| PX4 | Piloto automático de código abierto: el software que, dentro del vehículo, estima su posición y controla los motores para seguir un setpoint. Más detalle en [Instalación y compilación](Installation-and-build.md). |
+| SITL | PX4 ejecutado como software en el ordenador, sin hardware real, simulando sensores y física. |
 
 Esto es solo un glosario de bolsillo; los términos se explican con más
 detalle donde hace falta en cada página. Para comandos y pasos de

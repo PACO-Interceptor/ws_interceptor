@@ -163,10 +163,13 @@ limitaciones siguen existiendo.
 ## Referencias oficiales
 
 - [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/)
+- [PX4 (sitio oficial)](https://px4.io/)
 - [Guía ROS 2 de PX4](https://docs.px4.io/main/en/ros2/)
 - [px4_msgs](https://github.com/PX4/px4_msgs)
 - [px4_ros_com](https://github.com/PX4/px4_ros_com)
 - [px4-ros2-interface-lib](https://github.com/Auterion/px4-ros2-interface-lib)
+- [Micro XRCE-DDS (documentación del protocolo)](https://micro-xrce-dds.docs.eprosima.com/en/latest/)
+- [Micro-XRCE-DDS-Agent (repositorio)](https://github.com/eProsima/Micro-XRCE-DDS-Agent)
 
 ---
 

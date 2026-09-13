@@ -1,25 +1,18 @@
 # ws_interceptor
 
-`ws_interceptor` es un workspace de ROS 2 que conecta dos vehículos PX4:
-
-- **Interceptor**: el vehículo que intenta alcanzar al target.
-- **Target**: el vehículo cuya posición y movimiento se siguen.
-
-El código propio está en [`src/interceptor`](../../src/interceptor). El workspace
-también contiene tres dependencias vendorizadas: `px4_msgs`,
-`px4_ros_com` y `px4-ros2-interface-lib`. Estas dependencias proporcionan los
-mensajes PX4, las conversiones de coordenadas y la biblioteca para registrar
-modos de vuelo personalizados.
-
-## Funcionamiento en una frase
-
-PX4 publica odometría, los nodos la convierten y la relacionan mediante tf2, y
-un modo de guiado calcula un setpoint que PX4 intenta seguir.
+`ws_interceptor` es un workspace de ROS 2 que conecta dos vehículos PX4
+simulados: un **interceptor**, que intenta alcanzar a un **target**. El
+código propio está en [`src/interceptor`](../../src/interceptor). El
+workspace también contiene tres dependencias vendorizadas: `px4_msgs`,
+`px4_ros_com` y `px4-ros2-interface-lib`, que proporcionan los mensajes PX4,
+las conversiones de coordenadas y la biblioteca para registrar modos de
+vuelo personalizados.
 
 ## Resumen en una página
 
-Si esta es tu primera vez aquí y solo quieres entender la idea general antes
-de leer las 9 páginas en detalle, esto es lo esencial:
+PX4 publica odometría, los nodos la convierten y la relacionan mediante tf2,
+y un modo de guiado calcula un setpoint que PX4 intenta seguir. Si es tu
+primera vez aquí, esto es todo lo esencial antes de entrar en detalle:
 
 - Hay dos drones simulados con PX4: el **interceptor** (el que persigue) y el
   **target** (el perseguido).
@@ -40,8 +33,12 @@ de leer las 9 páginas en detalle, esto es lo esencial:
 - `pursuit_mode` es el más simple: apunta directo hacia la posición actual
   del target. `PN_mode` es más sofisticado: anticipa el movimiento del
   target usando su velocidad (navegación proporcional).
+- El paquete incluye además nodos auxiliares de inspección y diagnóstico, que
+  solo imprimen datos por consola sin intervenir en el control de vuelo.
 - Nada de esto arranca PX4 por ti: hay que lanzar las dos simulaciones PX4 a
-  mano y después el `launch` de este proyecto.
+  mano. El `launch` de este proyecto sí arranca el Micro XRCE-DDS Agent y los
+  nodos propios, pero necesita que el agente ya esté compilado en
+  `~/Micro-XRCE-DDS-Agent`.
 
 Con esto ya tienes la idea general. El resto de la wiki explica cada pieza
 con más detalle, con diagramas y con los comandos exactos para instalar,
@@ -63,35 +60,28 @@ La documentación está ordenada para seguir el sistema de extremo a extremo:
 10. [Mapa del workspace y dependencias](Workspace-file-map.md)
 11. [Referencia y solución de problemas](Quick-reference-and-troubleshooting.md)
 
-## Alcance del proyecto
+## Glosario mínimo
 
-El paquete propio:
-
-- recibe `VehicleOdometry` de dos instancias PX4;
-- convierte datos entre los marcos NED y ENU;
-- publica transforms tf2 para ambos vehículos;
-- publica la velocidad del target;
-- ofrece los modos `pursuit_mode` y `PN_mode`;
-- proporciona nodos auxiliares para inspección y diagnóstico.
-
-El launch del proyecto no inicia PX4 SITL. Las instancias PX4 y el
-Micro XRCE-DDS Agent deben estar preparados antes de ejecutar el launch.
-
-## Referencias rápidas
+Nueve palabras que se repiten en toda la wiki. No sustituyen a las
+explicaciones de cada página, pero sirven para no perderse si llegas
+directamente a una página intermedia sin leer el resumen de arriba:
 
 | Concepto | Significado en este proyecto |
 | --- | --- |
 | Nodo | Programa ROS 2 que realiza una tarea concreta. |
+| Modo (de vuelo) | Estrategia de guiado registrada en PX4 (`pursuit_mode`, `PN_mode`). No es lo mismo que un nodo, aunque cada modo se implementa dentro de uno — fíjate bien: "nodo" y "modo" solo se diferencian en una letra. |
 | Tópico | Canal con nombre por el que se intercambian mensajes. |
 | Mensaje | Estructura de datos que viaja por un tópico. |
+| Frame (marco) | Sistema de referencia con nombre (`map`, `interceptor/base_link`, `target/base_link`) que tf2 usa para ubicar cada vehículo. |
 | tf2 | Sistema que relaciona posiciones y orientaciones entre marcos. |
 | Odometría | Posición, orientación y velocidad estimadas. |
 | Setpoint | Referencia de movimiento que se entrega a PX4. |
 | SITL | PX4 ejecutado como software para simular un vehículo. |
 
-Los términos técnicos que aparecen en las páginas se explican donde son
-necesarios. La [referencia y solución de problemas](Quick-reference-and-troubleshooting.md)
-reúne los comandos habituales.
+Esto es solo un glosario de bolsillo; los términos se explican con más
+detalle donde hace falta en cada página. Para comandos y pasos de
+diagnóstico, usa la [referencia rápida y solución de problemas](Quick-reference-and-troubleshooting.md)
+— es una página distinta, centrada en órdenes de terminal, no en conceptos.
 
 ## Límites y seguridad
 

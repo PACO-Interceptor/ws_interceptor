@@ -1,9 +1,9 @@
 # Nodos, tópicos y diagnóstico
 
-Un **diagnóstico** es una comprobación para descubrir por qué algo no funciona.
-En ROS 2, los comandos de esta página observan el sistema sin modificar el
-código. Un **topic** es lo mismo que un tópico: un canal identificado por un
-nombre.
+Esta página describe qué nodos y tópicos usa el paquete y cómo se conectan
+entre sí; al final explica cómo inspeccionarlos para diagnosticar problemas.
+Los comandos de esta página solo observan el sistema, nunca modifican el
+código.
 
 ## Nodos principales
 
@@ -14,21 +14,20 @@ nombre.
 | `pursuit_mode` | Modo de persecución pura basado en la posición. |
 | `PN_mode` | Modo de navegación proporcional basado en posición y velocidad. |
 
-Un ejecutable es un programa; un nodo es la instancia ROS 2 que ese programa
-crea al arrancar. Normalmente aquí hay una relación uno a uno, pero no son
-conceptos idénticos: el mismo ejecutable podría iniciar varias instancias con
-nombres o namespaces distintos.
-
-Un **ejecutable** es un archivo que el sistema puede iniciar. Una **instancia**
-es una copia concreta de un programa en funcionamiento. Un **namespace** es un
-prefijo de nombres que evita que dos copias choquen entre sí.
+Un **ejecutable** es un archivo que el sistema puede iniciar; un nodo es la
+instancia ROS 2 que ese programa crea al arrancar. Normalmente hay una
+relación uno a uno entre ambos, pero no son conceptos idénticos: el mismo
+ejecutable podría iniciar varias instancias con nombres o namespaces
+distintos. Una **instancia** es una copia concreta de un programa en
+funcionamiento; un **namespace** es un prefijo de nombres que evita que dos
+copias choquen entre sí.
 
 ## Nodos auxiliares
 
 | Ejecutable | Uso |
 | --- | --- |
 | `target_vehicle_odometry_subscriber` | Imprime por pantalla la odometría recibida del tópico sin prefijo. |
-| `interceptor_vehicle_odometry_subscriber` | Imprime datos de odometría para diagnóstico. |
+| `interceptor_vehicle_odometry_subscriber` | Imprime por pantalla la odometría recibida del tópico con prefijo `/px4_1/`. |
 | `tf2_listener` | Muestra la transformación relativa y la velocidad del target una vez por segundo. |
 
 Los suscriptores de odometría son herramientas de inspección, no forman parte
@@ -83,8 +82,8 @@ diagrama.
 | suscriptores de diagnóstico | `VehicleOdometry` | texto en consola |
 | `tf2_listener` | tf2 y odometría target | texto en consola |
 
-La tabla es una vista de dependencias: si una entrada falta, no tiene sentido
-dejar el nodo de control como primera sospecha.
+La tabla es una vista de dependencias: si a un nodo le falta una entrada, el
+problema suele estar en quien debería producir ese dato, no en el nodo mismo.
 
 ## Parámetros
 
@@ -111,6 +110,13 @@ usa un namespace.
 
 ## Inspección desde otra terminal
 
+El launch (o cualquier nodo arrancado con `ros2 run`) ocupa su propia
+terminal mostrando sus logs; para consultar el sistema mientras sigue
+corriendo, abre una terminal nueva y carga primero ROS 2 y el workspace
+(`source install/setup.bash`).
+
+Comprobación rápida:
+
 ```bash
 ros2 node list
 ros2 topic list
@@ -120,7 +126,18 @@ ros2 topic hz /target/velocity
 ros2 run tf2_tools view_frames
 ```
 
-Otros comandos útiles:
+- `node list` y `topic list` muestran qué nodos y tópicos existen ahora
+  mismo: si falta uno que esperabas, ese es el primer indicio de qué
+  componente no ha arrancado.
+- `topic echo` imprime en vivo los mensajes que pasan por un tópico —sirve
+  para comprobar que hay datos de verdad, no solo que el tópico existe.
+- `topic hz` mide la frecuencia real de publicación; compárala con la
+  esperada (por ejemplo, unos 10 Hz para `target/velocity`).
+- `view_frames` no imprime nada en la terminal: genera un archivo PDF en la
+  carpeta actual con un dibujo de todo el árbol tf2, útil para ver de un
+  vistazo qué frames existen y cómo se relacionan.
+
+Para ir más allá de "existe o no existe":
 
 ```bash
 ros2 node info /target_tf2_frame_publisher
@@ -129,9 +146,11 @@ ros2 interface show geometry_msgs/msg/TwistStamped
 ros2 run tf2_ros tf2_echo map target/base_link
 ```
 
-`node info` muestra conexiones, `topic info --verbose` muestra publishers,
-subscribers y QoS, `interface show` enseña la estructura del mensaje y
-`tf2_echo` imprime una transformación en tiempo real.
+`node info` muestra las conexiones de un nodo concreto (qué publica y a qué
+se suscribe); `topic info --verbose` muestra sus publishers, subscribers y
+QoS; `interface show` enseña los campos que tiene un tipo de mensaje; y
+`tf2_echo` imprime en tiempo real una transformación concreta del árbol tf2,
+en vez de todo el árbol como `view_frames`.
 
 Los nombres absolutos de los tópicos comienzan por `/`. En el código de los
 modos, `target/velocity` se usa como nombre relativo y ROS 2 lo resuelve dentro

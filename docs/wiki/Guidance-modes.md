@@ -20,7 +20,6 @@ ordenada de cálculos para obtener una decisión.
 | **Línea de visión (LOS)** | Flecha imaginaria que va desde el interceptor hasta el target. |
 | **Producto vectorial** | Operación entre vectores que ayuda a medir cómo cambia la dirección de una línea. |
 | **Armar** | Dar permiso a PX4 para que el vehículo pueda activar sus motores/controladores. |
-| **Cuaternión** | Cuatro números que representan una orientación sin algunos problemas de los ángulos tradicionales. |
 
 Por ejemplo, si el interceptor está en `(0, 0, 0)` y el target en
 `(10, 0, 0)`, la línea de visión apunta en la dirección positiva del primer
@@ -36,8 +35,11 @@ vuelo personalizados.
 
 Cada modo:
 
-1. Crea un `TrajectorySetpointType` para enviar órdenes.
-2. Lee la posición y velocidad propias con `OdometryLocalPosition`.
+1. Crea un `TrajectorySetpointType`, el canal de salida de la biblioteca
+   `px4_ros2` para enviar órdenes a PX4 (velocidad, aceleración y yaw).
+2. Crea un `OdometryLocalPosition`, el canal de entrada equivalente para
+   leer la posición y velocidad **propias del interceptor** —el vehículo
+   que ejecuta el modo—, sin pasar por tf2 ni por ningún tópico.
 3. Busca `map -> target/base_link` cada 50 ms.
 4. Rechaza el armado si aún no hay datos válidos del target.
 5. Calcula un setpoint durante `updateSetpoint`.
@@ -142,6 +144,11 @@ flowchart TD
     LIMIT --> OUT
     KEEP --> OUT
 ```
+
+En el diagrama, `×` significa cosas distintas según lo que multiplique: entre
+`los` y `v_rel`, o entre `ω` y `v_rel`, es el **producto vectorial** de la
+tabla de arriba (dos vectores); entre `kNavigationConstant` y un vector, es
+una multiplicación normal por un número.
 
 La velocidad horizontal/vertical de persecución (igual que en `pursuit_mode`,
 pero con `7 m/s` en vez de `5 m/s`) siempre se calcula y se envía; `a_cmd` es

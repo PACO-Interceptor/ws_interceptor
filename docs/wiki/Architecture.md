@@ -15,38 +15,41 @@ flowchart LR
 
     PX4T["PX4 target<br/>(instancia 1)"] -->|VehicleOdometry| TFT[target_tf2_odometry]
     TFT -->|"map -> target/base_link"| TF2
-    TFT -->|target/velocity| VEL["tópico target/velocity"]
+    TFT -->|target/velocity| VEL[("tópico target/velocity")]
 
     TF2 -->|posición del target| MODE["pursuit_mode / PN_mode"]
     VEL -->|velocidad del target| MODE
     MODE -->|TrajectorySetpoint| PX4I
+
+    classDef datastore fill:#3b2f52,stroke:#b794f4,color:#f1eaff
+    class TF2,VEL datastore
 ```
 
-Cada caja es un programa o un dato publicado; cada flecha es "esto produce
-aquello, que otro programa consume después". Las flechas no significan
-llamadas directas entre funciones. Representan publicación y consumo de
-datos: un proceso publica un mensaje, DDS lo entrega y otro proceso ejecuta
-su callback. tf2 funciona como un almacén distribuido de relaciones entre
-frames.
+No todas las cajas son lo mismo, y el diagrama lo marca: los rectángulos son
+**procesos**, programas en ejecución (las dos instancias de PX4, los dos
+conversores tf2, los modos de guiado). Las dos cajas con forma de cilindro y
+color distinto —el árbol tf2 y el tópico `target/velocity`— no son
+procesos; nadie las "ejecuta". Son sitios donde un proceso deja un dato para
+que otro lo recoja más tarde. El árbol tf2 en concreto funciona como un
+almacén de relaciones entre frames, mantenido por el sistema tf2, no por el
+código propio.
 
-Un **proceso** es un programa que está ejecutándose. “Publicar” significa
-enviar un dato con un nombre; “consumir” significa recibirlo para usarlo.
+Las flechas, a su vez, no significan llamadas directas entre funciones:
+representan publicación y consumo de datos. Un proceso publica un mensaje,
+DDS lo entrega, y otro proceso ejecuta su callback cuando le llega.
 
-## Qué ocurre en un ciclo de datos
+Dentro de eso, sus etiquetas no son todas del mismo tipo:
 
-Imaginemos que el target se mueve unos centímetros:
-
-1. PX4 actualiza su estimación y publica un `VehicleOdometry`.
-2. `target_tf2_odometry` recibe el mensaje en una callback.
-3. Convierte posición, velocidad y orientación de NED a ENU.
-4. Publica una nueva relación `map -> target/base_link`.
-5. Guarda la última velocidad y el timer publica `target/velocity`.
-6. `pursuit_mode` o `PN_mode` consulta la última posición mediante tf2.
-7. El modo combina esa posición con la odometría propia.
-8. PX4 recibe el setpoint y su controlador intenta seguirlo.
-
-El ciclo se repite continuamente. No existe una única función `followTarget()`;
-el comportamiento emerge de varios callbacks, timers y controladores.
+- `VehicleOdometry` y `TrajectorySetpoint` son **tipos de mensaje**, no
+  nombres de tópico. El tópico real de la odometría es
+  `/fmu/out/vehicle_odometry` (o `/px4_1/...` para el target; ver la tabla
+  más abajo).
+- `map -> interceptor/base_link` y `map -> target/base_link` no son
+  tópicos: son **transforms**, relaciones guardadas dentro del árbol tf2.
+- `target/velocity` sí es el **nombre literal de un tópico** ROS 2.
+- "posición del target" y "velocidad del target" no son el nombre de nada
+  real: son una descripción en español de qué dato se lee en ese punto (una
+  consulta al árbol tf2, o el último mensaje recibido en el tópico).
 
 ## Dos instancias PX4
 
@@ -57,6 +60,26 @@ el comportamiento emerge de varios callbacks, timers y controladores.
 
 La instancia del target es importante: si se cambia el índice de PX4, también
 habría que adaptar el tópico en `target_tf2_odometry.cpp`.
+
+## Qué ocurre en un ciclo de datos
+
+Imaginemos que el target se mueve unos centímetros:
+
+1. PX4 actualiza su estimación y publica un `VehicleOdometry`.
+2. `target_tf2_odometry` recibe el mensaje en una callback.
+3. Convierte posición, velocidad y orientación de NED a ENU.
+4. Publica una nueva relación `map -> target/base_link`.
+5. Guarda la última velocidad y el timer publica `target/velocity`.
+6. Cada 50 ms, `pursuit_mode` o `PN_mode` consulta esa posición mediante tf2.
+7. El modo combina esa posición con su propia odometría (leída vía
+   `px4_ros2`) y calcula una velocidad —y, en PN, también una aceleración.
+8. `TrajectorySetpointType` entrega ese setpoint a PX4, y su controlador
+   intenta seguirlo.
+9. Cuando la distancia al target baja de 1 m, el modo se da por completado.
+
+El ciclo (pasos 1-8) se repite continuamente hasta que ocurre el paso 9. No
+existe una única función `followTarget()`; el comportamiento emerge de varios
+callbacks, timers y controladores.
 
 ## Marcos de referencia
 
@@ -131,30 +154,20 @@ visión.
 qué frame se interpreta el dato; `twist.linear` contiene la velocidad lineal.
 En este proyecto no se usa la velocidad angular.
 
-## Flujo de control
-
-1. PX4 publica `VehicleOdometry`.
-2. Un conversor transforma NED a ENU y publica un transform tf2.
-3. El modo de guiado consulta `map -> target/base_link` cada 50 ms.
-4. El modo lee su propia posición y velocidad mediante `px4_ros2`.
-5. Calcula una velocidad y, en PN, una aceleración.
-6. `TrajectorySetpointType` entrega el setpoint al interceptor.
-7. El modo termina con éxito cuando la distancia al target es menor que 1 m.
-
 ## Qué pasa si un componente deja de funcionar
 
 | Componente ausente | Síntoma probable |
 | --- | --- |
 | PX4 interceptor | No hay odometría propia ni control útil. |
 | PX4 target | No aparece el frame del target. |
-| Agente DDS | ROS 2 no recibe los topics de PX4. |
+| Agente DDS | ROS 2 no recibe los tópicos de PX4. |
 | `target_tf2_odometry` | Falta `target/base_link` y `target/velocity`. |
 | `interceptor_tf2_odometry` | Falta el frame del interceptor para diagnóstico. |
 | `target/velocity` | PN no supera su comprobación de armado. |
 | Modo PX4 | Hay datos, pero no se generan setpoints de guiado. |
 
-Esta tabla permite diagnosticar de izquierda a derecha: primero transporte,
-después transformación y por último control.
+Las filas están ordenadas para diagnosticar de arriba a abajo: primero
+transporte, después transformación y por último control.
 
 ---
 

@@ -17,16 +17,18 @@ arriesgar hardware, aunque no reproduce todas las condiciones físicas.
 
 Las instancias deben tener identidades diferentes:
 
-- índice `0`: interceptor, topics sin `/px4_1/`;
-- índice `1`: target, topics con `/px4_1/`.
+- índice `0`: interceptor, tópicos sin `/px4_1/`;
+- índice `1`: target, tópicos con `/px4_1/`.
 
-El índice no es un nombre visual: forma parte del direccionamiento de los
-mensajes. Si se intercambian los índices, el código puede seguir compilando
-pero consumir datos del vehículo equivocado.
-
-`udp4` significa comunicación UDP usando IPv4. UDP es una forma de enviar
-paquetes por la red sin mantener una conexión permanente; aquí se usa dentro
-del ordenador para que el agente reciba datos.
+`/px4_1/` es un prefijo que PX4 añade automáticamente a los tópicos de una
+instancia arrancada con `-i` mayor que 0 (aquí, `-i 1`), para distinguirlos
+de los de la instancia `0`, que no lleva prefijo. Aquí hace falta porque
+interceptor y target son dos PX4 corriendo a la vez en el mismo ordenador:
+sin el prefijo, ambos publicarían en los mismos nombres de tópico y no habría
+forma de saber de qué vehículo viene cada mensaje. Por eso el índice no es un
+nombre visual, sino parte real del direccionamiento: si se intercambian los
+índices al arrancar, el código sigue compilando igual, pero cada nodo termina
+consumiendo los datos del vehículo equivocado.
 
 ## Orden recomendado
 
@@ -63,7 +65,7 @@ En el directorio de PX4:
 make px4_sitl gz_x500
 ```
 
-Esta es la instancia `0`, que publica sus temas sin el prefijo `px4_1`.
+Esta es la instancia `0` (el interceptor, ver arriba).
 
 Espera a que PX4 termine su arranque antes de continuar. En una prueba real
 conviene confirmar que el proceso está estable y que el vehículo aparece en la
@@ -77,7 +79,7 @@ En otra terminal de PX4:
 PX4_SIM_MODEL=gz_x500 /build/px4_sitl_default/bin/px4 -i 1
 ```
 
-La instancia `1` publica bajo `/px4_1/`.
+Esta es la instancia `1` (el target, ver arriba).
 
 La ruta `/build/px4_sitl_default/bin/px4` depende de dónde esté el árbol de
 PX4. Si ese binario no existe, localiza el ejecutable generado en el build de
@@ -92,10 +94,14 @@ ros2 launch interceptor interceptor.launch.py
 ```
 
 El launch inicia el agente con `udp4` en el puerto `8888`, los conversores de
-odometría, los nodos de diagnóstico y los dos nodos de modo de vuelo.
+odometría, los nodos de diagnóstico y los dos nodos de modo de vuelo. `udp4`
+significa comunicación UDP usando IPv4: una forma de enviar paquetes por la
+red sin mantener una conexión permanente; aquí se usa dentro del propio
+ordenador, para que el agente reciba los datos que le manda PX4.
 
-> El launch no inicia PX4 SITL. Los dos comandos anteriores son obligatorios si
-> se quiere probar con simulación.
+
+
+ El launch no inicia PX4 SITL. Los dos comandos anteriores son obligatorios si se quiere probar con simulación.
 
 ## Cómo saber si el arranque funcionó
 

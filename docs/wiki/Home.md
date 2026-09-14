@@ -62,7 +62,7 @@ La documentación está ordenada para seguir el sistema de extremo a extremo:
 
 ## Glosario mínimo
 
-Doce palabras que se repiten en toda la wiki. No sustituyen a las
+Dieciséis palabras que se repiten en toda la wiki. No sustituyen a las
 explicaciones de cada página, pero sirven para no perderse si llegas
 directamente a una página intermedia sin leer el resumen de arriba:
 
@@ -72,6 +72,10 @@ directamente a una página intermedia sin leer el resumen de arriba:
 | Modo (de vuelo) | Estrategia de guiado registrada en PX4 (`pursuit_mode`, `PN_mode`). No es lo mismo que un nodo, aunque cada modo se implementa dentro de uno — fíjate bien: "nodo" y "modo" solo se diferencian en una letra. |
 | Tópico | Canal con nombre por el que se intercambian mensajes. |
 | Mensaje | Estructura de datos que viaja por un tópico. |
+| Publisher | Lo que crea un nodo para **enviar** mensajes a un tópico. |
+| Suscripción (subscriber) | Lo que crea un nodo para **recibir** mensajes de un tópico; cada mensaje que llega dispara una callback. |
+| Timer | Dispara una callback repetidamente a intervalos fijos (por ejemplo, cada 50 ms), sin depender de que llegue ningún mensaje. |
+| Logging | El mecanismo para imprimir mensajes de diagnóstico (`RCLCPP_INFO`, `RCLCPP_WARN`...) en la consola o en los logs. |
 | Callback | Función que no llamas tú: se la entregas a ROS 2 (al suscribirte a un tópico, al crear un timer...) y es ROS 2 quien la ejecuta automáticamente cada vez que llega un mensaje o dispara el temporizador. |
 | DDS | Protocolo que reparte los mensajes entre nodos sin que se conozcan directamente entre sí. PX4 usa una versión ligera (uXRCE-DDS) que el Micro XRCE-DDS Agent traduce al DDS que hablan los nodos ROS 2. |
 | Frame (marco) | Sistema de referencia con nombre (`map`, `interceptor/base_link`, `target/base_link`) que tf2 usa para ubicar cada vehículo. |

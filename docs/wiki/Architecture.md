@@ -34,6 +34,17 @@ que otro lo recoja más tarde. El árbol tf2 en concreto funciona como un
 almacén de relaciones entre frames, mantenido por el sistema tf2, no por el
 código propio.
 
+El código no habla con ese almacén directamente: usa tres piezas de la
+biblioteca tf2 para hacerlo. El **broadcaster** es lo que usan
+`interceptor_tf2_odometry` y `target_tf2_odometry` para *escribir* en el
+árbol tf2 (es el "publisher" de tf2). El **buffer** es una copia local de
+parte de ese árbol, guardada dentro de cada nodo que necesita consultarlo. El
+**listener** es lo que mantiene esa copia local al día: escucha el árbol tf2
+en segundo plano y rellena el buffer automáticamente (es el "suscriptor" de
+tf2). Los modos de guiado y `tf2_listener` tienen su propio buffer y
+listener porque necesitan *leer* el árbol; los conversores tf2 solo tienen
+broadcaster porque solo necesitan *escribir* en él.
+
 Las flechas, a su vez, no significan llamadas directas entre funciones:
 representan publicación y consumo de datos. Un proceso publica un mensaje,
 DDS lo entrega, y otro proceso ejecuta su callback cuando le llega.

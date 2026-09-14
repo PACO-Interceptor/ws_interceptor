@@ -48,6 +48,11 @@ Cada modo:
 Si tf2 todavía no conoce el target, el modo muestra un aviso y no genera un
 setpoint válido.
 
+`completed()` no apaga PX4 ni aterriza el vehículo: solo le indica a la
+biblioteca `px4_ros2` que este modo ha terminado su tarea con éxito. Qué pasa
+después (aterrizar, mantenerse en el sitio, cambiar de modo...) lo decide PX4
+o quien esté volando, no este código.
+
 ## Qué es un setpoint
 
 Un setpoint no es una orden instantánea de “mueve el motor así”. Es una

@@ -8,27 +8,22 @@ mucho más detalle, las tres páginas de "Análisis línea por línea" que
 vienen después de esta.
 
 Si nunca has programado, empieza por esta regla: un archivo de código es una
-lista de instrucciones que el ordenador ejecuta siguiendo eventos. Las palabras
-que empiezan por `#include` traen herramientas ya escritas; una **clase** agrupa
-datos y funciones relacionadas; una **función** es un conjunto de instrucciones
-con un nombre; una **variable** guarda un valor que puede cambiar.
-
-1. Los `#include` importan las herramientas necesarias.
-2. La clase hereda de `rclcpp::Node` o de `px4_ros2::ModeBase`.
-3. El constructor crea publishers, subscribers, timers y parámetros.
-4. Las callbacks reaccionan a mensajes o a temporizadores.
-5. `main` inicializa ROS 2, mantiene el nodo vivo y lo apaga correctamente.
-
-En C++, los símbolos `{` y `}` delimitan un bloque de instrucciones, `;` marca
-normalmente el final de una instrucción y `//` empieza un comentario que el
-compilador ignora. Un **tipo** (`int`, `float`, `std::string`, etc.) indica qué
-clase de valor puede guardar una variable.
+lista de instrucciones para el ordenador. `#include` trae herramientas ya
+escritas; una **clase** agrupa datos y funciones relacionadas; una
+**función** es un conjunto de instrucciones con un nombre; una **variable**
+guarda un valor que puede cambiar. En C++, los símbolos `{` y `}` delimitan
+un bloque de instrucciones, `;` marca normalmente el final de una
+instrucción y `//` empieza un comentario que el compilador ignora. Un
+**tipo** (`int`, `float`, `std::string`, etc.) indica qué clase de valor
+puede guardar una variable.
 
 Los enlaces a archivos de esta página llevan al código real del repositorio.
 
 ## Patrón común de los nodos C++
 
-Los siguientes archivos usan el mismo patrón:
+Los siguientes archivos comparten la misma estructura general —includes,
+clase, constructor, callback, `main`— aunque no cada uno necesite
+exactamente las mismas piezas dentro de esa estructura:
 
 - [`interceptor_tf2_odometry.cpp`](../../src/interceptor/src/interceptor_tf2_odometry.cpp)
 - [`target_tf2_odometry.cpp`](../../src/interceptor/src/target_tf2_odometry.cpp)
@@ -38,20 +33,38 @@ Los siguientes archivos usan el mismo patrón:
 
 ### Includes
 
-`rclcpp/rclcpp.hpp` proporciona `Node`, publishers, subscribers, timers y
-logging. Los headers de `px4_msgs` contienen el tipo `VehicleOdometry`.
-`geometry_msgs` contiene mensajes estándar como `TransformStamped` y
-`TwistStamped`. Los headers `tf2_ros` ofrecen broadcaster, buffer y listener.
-`memory`, `string`, `array`, `functional` y `chrono` son utilidades estándar de
-C++.
+- `rclcpp/rclcpp.hpp` y `px4_msgs/msg/vehicle_odometry.hpp` — comunes a los
+  cinco archivos. El primero aporta `Node`, publishers, subscribers, timers
+  y logging; el segundo trae el tipo `VehicleOdometry`, el mensaje que
+  envía PX4.
+- `geometry_msgs` y `tf2_ros` — el subconjunto que trabaja con tf2 (los dos
+  conversores y `tf2_listener`) los añade encima de lo anterior; los dos
+  subscriptores de diagnóstico no los necesitan, porque solo imprimen datos
+  por pantalla. `geometry_msgs` trae `TransformStamped` (y además
+  `TwistStamped` en `target_tf2_odometry.cpp`); `tf2_ros` trae el
+  broadcaster en los conversores, y el buffer y el listener en
+  `tf2_listener.cpp`.
+- `memory`, `string`, `array`, `functional`, `chrono` — utilidades estándar
+  de C++, repartidas según lo que necesite cada archivo.
 
 ### Constructor de un nodo
 
-Una clase como `FramePublisher` o `VehicleOdometrySubscriber` hereda de
-`rclcpp::Node`. La lista `: Node("nombre")` llama al constructor base y registra
-el nombre visible con `ros2 node list`.
+Una clase como `FramePublisher` o `VehicleOdometrySubscriber` **hereda** de
+`rclcpp::Node`: reutiliza todo lo que `Node` ya sabe hacer (registrarse en
+ROS 2, crear publishers, suscripciones, timers...) y le añade su propio
+comportamiento encima, en vez de reescribirlo desde cero. En C++ eso se
+declara así: `class FramePublisher : public rclcpp::Node`.
 
-Dentro del constructor se crean las comunicaciones. El QoS
+Justo antes de la `{` que abre el cuerpo del constructor aparece
+`: Node("nombre")` — la **lista de inicialización**: antes de ejecutar nada
+del cuerpo, llama al constructor de la clase base (`Node`) con ese nombre,
+que es el mismo que después aparece al ejecutar `ros2 node list`.
+
+Dentro del constructor se crean las comunicaciones: publishers, suscripciones,
+timers... (ver el [glosario de Home.md](Home.md) si no recuerdas qué es cada
+uno). Muchas de ellas piden un **QoS** (*Quality of Service*, "calidad de
+servicio"): un conjunto de reglas sobre cómo entregar los mensajes —cuántos
+guardar en cola, qué hacer si se pierde uno, etc. El perfil
 `rmw_qos_profile_sensor_data` está pensado para datos de sensores: prioriza
 recibir datos recientes aunque se descarte alguno antiguo.
 
@@ -63,9 +76,21 @@ recibir datos recientes aunque se descarte alguno antiguo.
 }
 ```
 
-Una lambda es una función anónima. `[this]` permite acceder a los atributos del
-objeto. ROS 2 llama la lambda cada vez que llega un mensaje. `UniquePtr`
-transfiere temporalmente la propiedad del mensaje y evita copias innecesarias.
+Una **lambda** es una función sin nombre, escrita directamente donde se
+necesita en vez de declararla aparte. Los corchetes `[this]` son su *lista de
+captura*: por defecto, una lambda no puede usar nada de fuera de sí misma;
+`[this]` le da acceso explícito a los atributos y métodos del objeto en el
+que está definida (por ejemplo, `vehicle_name_` en
+`interceptor_tf2_odometry.cpp`) — sin `[this]`, el código de dentro no podría
+leerlos. ROS 2 llama a esta lambda como *callback*, cada vez que llega un
+mensaje nuevo.
+
+`UniquePtr` es la versión de `std::unique_ptr` para este tipo de mensaje. Un
+`unique_ptr` es un puntero que **posee** el objeto al que apunta: solo puede
+haber un dueño a la vez, y cuando ese dueño deja de existir, el objeto se
+libera automáticamente, sin que el código tenga que hacerlo a mano. Aquí, ROS
+2 le entrega la propiedad del mensaje a la lambda en vez de copiarlo —de ahí
+"transfiere la propiedad"—, que es más rápido que hacer una copia completa.
 
 ### `main`
 
@@ -77,24 +102,25 @@ rclcpp::spin(std::make_shared<Clase>());
 rclcpp::shutdown();
 ```
 
-`init` prepara ROS 2, `make_shared` construye el nodo, `spin` procesa callbacks
-hasta que el proceso termina y `shutdown` libera los recursos de ROS 2.
+`init` prepara ROS 2 con los argumentos de la línea de comandos.
+`std::make_shared<Clase>()` crea el nodo como un `std::shared_ptr` —un
+puntero que sí puede tener varios dueños a la vez, a diferencia de
+`unique_ptr`, porque ROS 2 necesita compartir ese nodo internamente—. `spin`
+mantiene el proceso vivo, procesando callbacks, hasta que se interrumpe (por
+ejemplo con Ctrl+C); entonces `shutdown` libera los recursos de ROS 2.
 
 ## Cómo revisar o cambiar el proyecto
 
-Un orden recomendable para revisar el proyecto es (los tres primeros pasos
-tienen su detalle línea por línea en las páginas siguientes de esta wiki):
+Para explorar el código en detalle, sigue el
+[recorrido recomendado](Home.md) de la wiki: las tres páginas de "Análisis
+línea por línea" ya tienen su propio orden interno. Dos hábitos prácticos que
+no están en ese recorrido, y que conviene combinar con la lectura:
 
-1. Leer `CMakeLists.txt` para ver qué programas existen — ver
-   [Archivos de proyecto y construcción](Line-by-line-code-analysis.md).
-2. Leer un suscriptor de diagnóstico para entender callbacks — ver
-   [Nodos de odometría y tf2](Line-by-line-odometry-nodes.md).
-3. Leer un conversor tf2 para entender marcos — misma página anterior.
-4. Ejecutar `ros2 topic echo` y comprobar esos datos.
-5. Leer `pursuit_mode.cpp` para entender el setpoint más sencillo — ver
-   [Modos de guiado, línea por línea](Line-by-line-guidance-modes.md).
-6. Compararlo con `PN_mode.cpp`.
-7. Cambiar una constante de forma aislada, recompilar y observar el resultado.
+- No te fíes solo de haber entendido un archivo: ejecuta `ros2 topic echo`
+  (o el comando equivalente) sobre el tópico que publica o consume, y
+  confirma que el dato real es el que esperabas.
+- Para modificar el proyecto, cambia una sola constante o fórmula cada vez,
+  recompila y observa el resultado antes de tocar nada más.
 
 Después de cada modificación:
 
@@ -104,13 +130,22 @@ source install/setup.bash
 colcon test --packages-select interceptor --event-handlers console_direct+
 ```
 
-## Cómo seguir una ejecución con el depurador mental
+Las dos primeras líneas son las mismas de
+[Instalación y compilación](Installation-and-build.md): recompilar y volver a
+cargar el workspace. La tercera ejecuta los *tests* del paquete — que aquí
+son solo de **lint** (comprobación de estilo de código, no de que el
+comportamiento sea correcto): no hay tests unitarios en este proyecto.
+`--event-handlers console_direct+` hace que el resultado se imprima
+directamente en la terminal en vez de quedar solo en archivos de log. Si algo
+falla, ejecutar después `colcon test-result --verbose` muestra el detalle.
 
-El orden de la sección anterior es el orden en que **tú** lees los archivos.
-El orden en que **el programa** ejecuta las cosas es otro completamente
-distinto, y es el que hace falta para depurar. Cuando arranca `pursuit_mode`,
-no se ejecuta todo el archivo de arriba abajo una sola vez: es un programa
-dirigido por eventos, no una lista de instrucciones lineal. El orden real es:
+## Orden real de ejecución
+
+El orden en que tú lees los archivos —el recorrido recomendado de la
+wiki— no es el orden en que el programa los ejecuta. Cuando arranca
+`pursuit_mode`, no se ejecuta todo el archivo de arriba abajo una sola vez:
+es un programa dirigido por eventos, no una lista de instrucciones lineal.
+El orden real es:
 
 1. `main` inicializa ROS 2 y construye `PursuitModeNode`.
 2. La clase base crea la infraestructura del modo PX4.
@@ -141,45 +176,11 @@ sequenceDiagram
     Main->>ROS: rclcpp::shutdown()
 ```
 
-No existe una sola llamada que "ejecute el algoritmo de arriba abajo": el
-timer, `checkArmingAndRunConditions` y `updateSetpoint` se disparan en momentos
-distintos, controlados por `spin`, no por el orden en que están escritos en el
-archivo.
-
-Este modelo de eventos es diferente de un programa que contiene un `while` con
-todo el algoritmo. Para depurar, pregunta siempre qué evento ha ejecutado la
-línea: llegada de odometría, tick del timer, consulta de PX4 o mensaje de
-velocidad.
-
-## Tipos de C++ que aparecen repetidamente
-
-| Tipo | Motivo de uso |
-| --- | --- |
-| `std::string` | Nombres de tópicos, parámetros y frames. |
-| `std::shared_ptr` | Recursos compartidos cuya vida se gestiona automáticamente. |
-| `std::unique_ptr` | Recurso con un único propietario, como un broadcaster o buffer. |
-| `Eigen::Vector3f` | Vector de tres componentes `float`. |
-| `Eigen::Vector3d` | Vector de tres componentes `double`. |
-| `bool` | Estado de validez de datos. |
-| `std::clamp` | Limitar un valor entre mínimo y máximo. |
-| lambda `[this](...) { ... }` | Callback breve asociada a ROS 2. |
-
-La diferencia entre `float` y `double` importa cuando se convierten mensajes:
-las funciones de transformación suelen trabajar con `double`, mientras que
-algunos estados de control se guardan como `float`. `.cast<float>()` realiza
-esa conversión de forma explícita.
-
-## Errores habituales al leer el código
-
-- Confundir el nombre del archivo con el tópico real al que se suscribe.
-- Suponer que `tf2` contiene velocidad: aquí solo contiene posición y
-  orientación.
-- Pensar que `completed()` apaga PX4; indica a la biblioteca que el modo ha
-  terminado correctamente.
-- Olvidar que `spin()` es lo que permite que callbacks y timers se ejecuten.
-- Cambiar el orden NED/ENU sin modificar todas las partes relacionadas.
-
-Estas diferencias son más importantes que memorizar la sintaxis de cada include.
+En concreto, el timer, `checkArmingAndRunConditions` y `updateSetpoint` se
+disparan en momentos distintos, controlados por `spin`, no por el orden en
+que están escritos en el archivo. Para depurar, pregunta siempre qué evento
+ha ejecutado la línea que te interesa: llegada de odometría, tick del timer,
+consulta de PX4 o mensaje de velocidad.
 
 ---
 

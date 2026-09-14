@@ -59,7 +59,7 @@ encuentras con alguna de ellas y no sabes qué significa, vuelve a esta tabla:
 | `.norm()` | La longitud (magnitud) de un vector. | `los.norm() < 1.0f`. |
 | `.squaredNorm()` | La longitud al cuadrado. Se usa en vez de `.norm()` cuando no hace falta la raíz cuadrada exacta, porque calcularla es más rápido. | `los.squaredNorm() + 1e-6f`. |
 | `.normalized()` | Devuelve el mismo vector pero con longitud 1, conservando la dirección. Sirve para quedarte solo con "hacia dónde apunta" un vector, sin su tamaño. | `los_horizontal.normalized() * kMaxHorizontalSpeed`. |
-| `.cast<float>()` | Convierte los números de un vector/cuaternión de un tipo a otro (aquí, de `double` a `float`). | `position_ned.cast<float>()`. |
+| `.cast<float>()` | Convierte los números de un vector/cuaternión de un tipo a otro (aquí, de `double` a `float`). La `f` final de `Eigen::Vector3f` significa que sus tres componentes son `float`; la `d` de `Eigen::Vector3d`, que son `double`. Las funciones de conversión de frames suelen trabajar en `double`, mientras que el estado interno de los modos se guarda en `float` — de ahí que este `.cast<float>()` aparezca tan a menudo. | `position_ned.cast<float>()`. |
 | `std::bind(&Clase::metodo, this)` | Empaqueta un método de un objeto concreto para poder pasarlo como si fuera una función suelta (por ejemplo, a un timer). | `std::bind(&FrameListener::on_timer, this)` en `tf2_listener.cpp`. |
 | `std::clamp(valor, min, max)` | Si `valor` es menor que `min`, devuelve `min`; si es mayor que `max`, devuelve `max`; si no, devuelve `valor` tal cual. Limita un número a un rango. | `std::clamp(los.z(), -kMaxVerticalSpeed, kMaxVerticalSpeed)`. |
 | `std::min(a, b)` | Devuelve el menor de los dos valores. | `std::min(a_cmd_norm, kMaxAcceleration)`. |

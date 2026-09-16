@@ -1,15 +1,21 @@
 # Análisis línea por línea: archivos de proyecto y construcción
 
-Esta es la primera de tres páginas que cubren, línea por línea, **todos los
-archivos propios de `src/interceptor`**. Esta página se ocupa de los archivos
-de construcción, configuración y arranque del paquete. Las otras dos son:
+Esta es la primera de tres páginas que cubren **todos los archivos propios de
+`src/interceptor`**. Esta página se ocupa de los archivos de construcción,
+configuración y arranque del paquete. Las otras dos son:
 
 - [Nodos de odometría y tf2, línea por línea](Line-by-line-odometry-nodes.md):
-  los subscriptores de diagnóstico, los dos conversores tf2 y `tf2_listener`.
+  los suscriptores de diagnóstico, los dos conversores tf2 y `tf2_listener`.
 - [Modos de guiado, línea por línea](Line-by-line-guidance-modes.md):
   `pursuit_mode.cpp` y `PN_mode.cpp`.
 
-No se analizan línea por línea las librerías de terceros, tal como se decidió:
+La mayoría de archivos de esta página se analizan línea por línea porque son
+código o configuración que ejecuta la máquina (`.gitignore`, `package.xml`,
+`CMakeLists.txt`, el launch). `LICENSE` y `README.md` son la excepción: son
+texto para personas, no instrucciones que ROS 2 o CMake interpreten letra a
+letra, así que sus secciones se limitan a explicar qué son y para qué sirven.
+
+No se analizan línea por línea las librerías de terceros:
 esas carpetas se documentan en el [mapa del workspace](Workspace-file-map.md),
 pero su código pertenece a sus proyectos upstream. Los workflows de
 `.github` (CI, resúmenes de issues, releases) se documentan línea por línea
@@ -81,12 +87,12 @@ Las secciones de esta página y de las otras dos ya están ordenadas siguiendo
 esta progresión; no hace falta saltar de un lado a otro, basta con leer las
 tres páginas de arriba hacia abajo, en este orden:
 
-1. **En esta página**: `.gitignore`, `README.md` y `package.xml`, para conocer
-   la estructura del paquete; después `CMakeLists.txt`, para relacionar cada
-   ejecutable con su `.cpp`; y por último `interceptor.launch.py`, para ver
-   qué arranca y en qué orden.
+1. **En esta página**: `.gitignore`, `LICENSE` y `README.md`, para conocer la
+   estructura del paquete; después `package.xml` y `CMakeLists.txt`, para
+   relacionar cada ejecutable con su `.cpp`; y por último
+   `interceptor.launch.py`, para ver qué arranca y en qué orden.
 2. **En [nodos de odometría y tf2](Line-by-line-odometry-nodes.md)**: primero
-   los subscriptores de diagnóstico (son las callbacks más simples del
+   los suscriptores de diagnóstico (son las callbacks más simples del
    paquete), después los conversores tf2 y `tf2_listener`.
 3. **En [modos de guiado](Line-by-line-guidance-modes.md)**: `pursuit_mode.cpp`
    antes que `PN_mode.cpp` (Pursuit es la base sobre la que PN añade cosas).
@@ -117,64 +123,31 @@ subir archivos fuente ni cambia el comportamiento del paquete.
 
 Archivo: [`src/interceptor/LICENSE`](../../src/interceptor/LICENSE)
 
-| Línea/conjunto | Qué significa |
-| --- | --- |
-| `<license>Proprietary` | Declara que el código es propietario, no una licencia open source estándar. |
-| `All rights reserved [...]` | Reserva los derechos a los autores indicados. |
-| `This software ... proprietary and confidential.` | Extiende esa protección al software y su documentación. |
-| `Unauthorized copying ... prohibited ...` | Prohíbe copiar, distribuir, modificar o usar sin permiso escrito previo. |
-| `</license>` | Cierra el elemento XML que envuelve el texto legal. |
-
-Este texto es legal, no código ejecutable. La etiqueta XML es una particularidad
-del archivo actual; `package.xml` también declara una licencia propietaria.
+Es el texto legal del paquete, no código ejecutable: declara que la licencia
+es propietaria (no open source), reserva los derechos a los autores
+indicados y prohíbe copiar, distribuir, modificar o usar el software sin
+permiso escrito previo. Envuelve ese texto en una etiqueta
+`<license>...</license>`, una particularidad de este archivo y no un formato
+estándar de licencias. `package.xml` declara la misma licencia propietaria,
+de forma independiente, en su propia etiqueta `<license>` (sección 4, más
+abajo).
 
 ## 3. `src/interceptor/README.md`
 
 Archivo: [`src/interceptor/README.md`](../../src/interceptor/README.md)
 
-### Identidad y requisitos
-
-| Línea/conjunto | Explicación |
-| --- | --- |
-| `# interceptor` | Título Markdown del paquete. |
-| Párrafo inicial | Resume que es un paquete ROS 2 `ament_cmake` para seguir e interceptar un target mediante PX4. |
-| `## Requisitos` | Comienza la lista de software necesario. |
-| `Ubuntu 24.04`, `ROS2 Jazzy`, `PX4 toolchain` | Define el sistema operativo, distribución ROS 2 y herramientas PX4 esperadas. |
-
-### Dependencias y preparación
-
-La sección `Dependencias` explica que el workspace debe contener `px4_msgs`,
-`px4_ros_com` y `px4-ros2-interface-lib`. Los enlaces llevan a sus repositorios
-oficiales; no descargan nada automáticamente.
-
-El bloque:
-
-```bash
-mkdir -p ~/ws_interceptor/src
-cd ~/ws_interceptor/src
-```
-
-crea la carpeta del workspace y entra en su directorio `src`. Los cuatro
-comandos `git clone` descargan el repositorio propio y las tres dependencias.
-El alias local `interceptor` solo es el nombre de la carpeta del repositorio
-principal.
-
-### Instalación, compilación y ejecución
-
-| Línea/comando | Qué hace |
-| --- | --- |
-| `cd ~/ws_interceptor` | Vuelve a la raíz del workspace. |
-| `source /opt/ros/jazzy/setup.bash` | Añade ROS 2 Jazzy al entorno de la terminal. |
-| `rosdep update` | Actualiza el índice de dependencias del sistema. |
-| `rosdep install --from-paths src --ignore-src -r -y` | Instala dependencias descritas por paquetes de `src`, sin reinstalar paquetes fuente. |
-| `colcon build --symlink-install` | Compila todos los paquetes y usa enlaces simbólicos para facilitar desarrollo. |
-| `source install/setup.bash` | Hace visibles los paquetes recién compilados. |
-| `colcon build --packages-up-to interceptor --symlink-install` | Compila `interceptor` y solo sus dependencias. |
-| `ros2 launch interceptor interceptor.launch.py` | Ejecuta el escenario descrito por el launch. |
-| `ros2 run interceptor pursuit_mode` | Ejecuta solo un binario del paquete. |
-
-La última sección enlaza documentación oficial para que una persona pueda
-investigar ROS 2, PX4 y las dependencias sin confundirlas con este código.
+Es la puerta de entrada al paquete para quien lo clona por primera vez.
+Resume qué es (un paquete ROS 2 `ament_cmake` para seguir e interceptar un
+target usando datos de odometría PX4), qué sistema operativo y herramientas
+requiere (Ubuntu 24.04, ROS 2 Jazzy, PX4 toolchain), y qué tres paquetes
+externos debe contener el workspace además de este (`px4_msgs`,
+`px4_ros_com`, `px4-ros2-interface-lib`, con enlaces a sus repositorios
+oficiales). A partir de ahí da los comandos para crear el workspace, clonar
+esas dependencias, instalarlas, compilar y ejecutar el paquete; esos mismos
+comandos ya se explican con detalle, orden y contexto en
+[Instalación y compilación](Installation-and-build.md), así que aquí no se
+repiten uno por uno. Termina enlazando la documentación oficial de ROS 2 y
+PX4 para quien quiera profundizar sin confundirla con este código.
 
 ## 4. `src/interceptor/package.xml`
 
@@ -193,9 +166,12 @@ Archivo: [`src/interceptor/package.xml`](../../src/interceptor/package.xml)
 | `<buildtool_depend>ament_cmake</buildtool_depend>` | Indica que CMake/ament construye el paquete. |
 
 Las etiquetas `<depend>` de `rclcpp`, `tf2_ros`, `tf2`, `geometry_msgs`,
-`px4_msgs`, `px4_ros_com`, `px4_ros2_cpp` y `sensor_msgs` declaran dependencias
-usadas al compilar y ejecutar. Cada nombre debe corresponder a un paquete ROS 2
-que `find_package` pueda localizar.
+`px4_msgs`, `px4_ros_com` y `px4_ros2_cpp` declaran dependencias que el código
+sí usa al compilar y ejecutar. Cada nombre debe corresponder a un paquete
+ROS 2 que `find_package` pueda localizar. `sensor_msgs` es distinta: está
+declarada aquí y en `CMakeLists.txt`, pero ningún archivo `.cpp` del paquete
+la incluye ni usa ninguno de sus tipos — es una dependencia declarada sin uso
+en el código fuente actual.
 
 `<exec_depend>launch</exec_depend>` y `<exec_depend>launch_ros</exec_depend>`
 son necesarias al ejecutar el archivo Python de launch. Las dos
@@ -229,7 +205,8 @@ configuración si no existe:
 - `px4_msgs`: `VehicleOdometry`.
 - `px4_ros_com`: conversiones de marcos.
 - `px4_ros2_cpp`: modos y setpoints PX4.
-- `sensor_msgs`: dependencia declarada por los nodos.
+- `sensor_msgs`: dependencia declarada pero sin uso en el código actual (ver
+  la nota en la sección de `package.xml`, más arriba).
 
 ### Construcción de cada ejecutable
 
@@ -246,7 +223,7 @@ Cada pareja `add_executable` + `ament_target_dependencies` hace dos cosas:
 | `target_tf2_odometry` | `src/target_tf2_odometry.cpp` | Igual, además publica velocidad. |
 | `tf2_listener` | `src/tf2_listener.cpp` | Buffer/listener tf2 y odometría PX4. |
 | `pursuit_mode` | `src/pursuit_mode.cpp` | `px4_ros2_cpp` y transformaciones. |
-| `PN_mode` | `src/PN_mode.cpp` | Igual que pursuit y mensajes geométricos. |
+| `PN_mode` | `src/PN_mode.cpp` | Idénticas a las de `pursuit_mode`. |
 
 Las líneas con los nombres repetidos dentro de `ament_target_dependencies` no
 son código duplicado accidental: indican al linker qué bibliotecas usa cada
@@ -300,7 +277,7 @@ número de línea coincide.
 | 30 | `)` | Cierra la llamada a `ExecuteProcess`. |
 | 32 | `target_vehicle_odometry_subscriber_node = Node(` | Empieza a construir el bloque del primer nodo. |
 | 33 | `package='interceptor',` | Paquete ROS 2 donde buscar el ejecutable. |
-| 34 | `executable='target_vehicle_odometry_subscriber',` | Nombre del binario a ejecutar (el subscriptor de diagnóstico con nombre "invertido", ver [Nodos y tópicos](Nodes-and-topics.md)). |
+| 34 | `executable='target_vehicle_odometry_subscriber',` | Nombre del binario a ejecutar (el suscriptor de diagnóstico con nombre "invertido", ver [Nodos y tópicos](Nodes-and-topics.md)). |
 | 35 | `output='log',` | Su salida va a los logs, no a pantalla. |
 | 36 | `)` | Cierra el bloque de este nodo. |
 | 38 | `target_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del target. |
@@ -308,7 +285,7 @@ número de línea coincide.
 | 40 | `executable='target_tf2_odometry',` | Ejecutable que convierte la odometría del target y publica `target/base_link` y `target/velocity`. |
 | 41 | `output='screen',` | Aquí la salida sí va directamente a la terminal (`screen`), a diferencia de los diagnósticos. |
 | 42 | `)` | Cierra el bloque. |
-| 44 | `interceptor_vehicle_odometry_subscriber_node = Node(` | Empieza el bloque del segundo subscriptor de diagnóstico. |
+| 44 | `interceptor_vehicle_odometry_subscriber_node = Node(` | Empieza el bloque del segundo suscriptor de diagnóstico. |
 | 45 | `package='interceptor',` | Igual que arriba. |
 | 46 | `executable='interceptor_vehicle_odometry_subscriber',` | Este ejecutable escucha en realidad la odometría del target (instancia 1); ver el aviso de nombres invertidos. |
 | 47 | `output='log',` | Salida a logs. |

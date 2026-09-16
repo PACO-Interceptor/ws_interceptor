@@ -2,7 +2,7 @@
 
 Esta es la tercera de tres páginas que cubren, línea por línea, todos los
 archivos propios de `src/interceptor`. Empieza por
-[Archivos de proyecto y construcción](Line-by-line-code-analysis.md) si aún no
+[Archivos de proyecto y construcción](Line-by-line-project-and-build-files.md) si aún no
 la has leído: ahí está el glosario de sintaxis de C++ (`override`, `explicit`,
 `constexpr`, plantillas, referencias, `.cross()`/`.normalized()`...) que
 también hace falta aquí. La segunda página es

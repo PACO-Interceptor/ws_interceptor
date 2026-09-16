@@ -54,7 +54,7 @@ La documentación está ordenada para seguir el sistema de extremo a extremo:
 4. [Nodos de odometría y diagnóstico](Nodes-and-topics.md)
 5. [Modos de guiado](Guidance-modes.md)
 6. [Lectura guiada del código](Code-walkthrough.md)
-7. [Análisis línea por línea: proyecto y construcción](Line-by-line-code-analysis.md)
+7. [Análisis línea por línea: proyecto y construcción](Line-by-line-project-and-build-files.md)
 8. [Análisis línea por línea: nodos de odometría y tf2](Line-by-line-odometry-nodes.md)
 9. [Análisis línea por línea: modos de guiado](Line-by-line-guidance-modes.md)
 10. [Mapa del workspace y dependencias](Workspace-file-map.md)

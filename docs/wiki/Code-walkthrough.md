@@ -39,7 +39,7 @@ exactamente las mismas piezas dentro de esa estructura:
   envía PX4.
 - `geometry_msgs` y `tf2_ros` — el subconjunto que trabaja con tf2 (los dos
   conversores y `tf2_listener`) los añade encima de lo anterior; los dos
-  subscriptores de diagnóstico no los necesitan, porque solo imprimen datos
+  suscriptores de diagnóstico no los necesitan, porque solo imprimen datos
   por pantalla. `geometry_msgs` trae `TransformStamped` (y además
   `TwistStamped` en `target_tf2_odometry.cpp`); `tf2_ros` trae el
   broadcaster en los conversores, y el buffer y el listener en
@@ -184,4 +184,4 @@ consulta de PX4 o mensaje de velocidad.
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Modos de guiado](Guidance-modes.md) · ➡️ Siguiente: [Análisis línea por línea: proyecto y construcción](Line-by-line-code-analysis.md)
+🏠 [Inicio](Home.md) · ⬅️ Anterior: [Modos de guiado](Guidance-modes.md) · ➡️ Siguiente: [Análisis línea por línea: proyecto y construcción](Line-by-line-project-and-build-files.md)

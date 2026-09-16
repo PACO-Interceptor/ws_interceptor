@@ -2,13 +2,13 @@
 
 Esta es la segunda de tres páginas que cubren, línea por línea, todos los
 archivos propios de `src/interceptor`. Empieza por
-[Archivos de proyecto y construcción](Line-by-line-code-analysis.md) si aún no
+[Archivos de proyecto y construcción](Line-by-line-project-and-build-files.md) si aún no
 la has leído: ahí están el glosario de sintaxis de C++ (`override`, `explicit`,
 `constexpr`, plantillas, referencias, `.cross()`/`.normalized()`...) y las
 notas de "cómo usar este análisis" que también aplican aquí. La tercera página
 es [Modos de guiado, línea por línea](Line-by-line-guidance-modes.md).
 
-Esta página cubre los dos subscriptores de diagnóstico, los dos conversores
+Esta página cubre los dos suscriptores de diagnóstico, los dos conversores
 tf2 (`interceptor_tf2_odometry`, `target_tf2_odometry`) y `tf2_listener` — los
 nodos que reciben la odometría de PX4, la convierten y la relacionan mediante
 tf2, sin calcular ningún setpoint de vuelo.
@@ -21,10 +21,11 @@ Archivos:
 - [`interceptor_vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/interceptor_vehicle_odometry_subscriber.cpp)
 
 Son casi idénticos: solo cambian el tópico al que se suscriben, el nombre del
-nodo y los textos impresos. La tabla siguiente cubre línea por línea
-`target_vehicle_odometry_subscriber.cpp` (61 líneas); justo después, una
+nodo, los textos impresos y cómo se reparte esa suscripción entre líneas (ver
+más abajo). La tabla siguiente cubre línea por línea
+`target_vehicle_odometry_subscriber.cpp` (60 líneas); justo después, una
 segunda tabla cubre las líneas de `interceptor_vehicle_odometry_subscriber.cpp`
-que son distintas.
+(61 líneas) que son distintas.
 
 ### 1.1. `target_vehicle_odometry_subscriber.cpp`, línea por línea
 
@@ -77,15 +78,18 @@ que son distintas.
 
 ### 1.2. `interceptor_vehicle_odometry_subscriber.cpp`: solo lo que cambia
 
-El resto de líneas son idénticas letra por letra a la tabla anterior salvo por
-tres detalles, exactamente donde el archivo lo dice:
+El resto de líneas son idénticas letra por letra a la tabla anterior, con
+cuatro diferencias: tres de contenido y una de formato que además desplaza en
+una línea todo lo que viene después (por eso este archivo tiene 61 líneas en
+vez de 60):
 
 | Línea | Código | Explicación |
 | ---: | --- | --- |
 | 3 | `@file interceptor_vehicle_odometry_subscriber.cpp` | El comentario Doxygen indica este nombre de archivo en vez del otro. |
 | 18 | `: Node("interceptor_vehicle_odometry_subscriber")` | El nodo se registra con este nombre visible. |
-| 24 | `this->create_subscription<px4_msgs::msg::VehicleOdometry>("px4_1/fmu/out/vehicle_odometry", qos,` | **Este es el detalle clave**: escucha `px4_1/fmu/out/vehicle_odometry`, es decir, la instancia **1**, la del target, no la del interceptor. |
-| 54 | `std::cout << "Starting interceptor_vehicle_odometry subscriber node..." << std::endl;` | Mensaje de arranque con este nombre. |
+| 24 | `this->create_subscription<px4_msgs::msg::VehicleOdometry>("px4_1/fmu/out/vehicle_odometry",` | **Este es el detalle clave**: escucha `px4_1/fmu/out/vehicle_odometry`, es decir, la instancia **1**, la del target, no la del interceptor. |
+| 25 | `qos,` | Aquí `qos` está en su propia línea; en `target_vehicle_odometry_subscriber.cpp` comparte la línea 24 con el tópico. Es la diferencia de formato: por ella este archivo suma una línea más y todo lo que sigue queda desplazado una posición respecto a la tabla 1.1. |
+| 54 | `std::cout << "Starting interceptor_vehicle_odometry subscriber node..." << std::endl;` | Mensaje de arranque con este nombre; es la misma línea que la 53 de la tabla 1.1, desplazada una posición por el motivo anterior. |
 
 ### Por qué esto importa
 
@@ -199,8 +203,8 @@ equivalente en el conversor del interceptor.
 | 39 | `std::ostringstream stream;` | Igual. |
 | 40 | `stream << "/px4_1/fmu/out/vehicle_odometry";` | **Tópico distinto**: instancia 1, la del target. |
 | 41 | `std::string topic_name = stream.str();` | Igual. |
-| 44 | ★ `velocity_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("target/velocity", 10);` | Crea el publisher de velocidad en `target/velocity`, con cola de 10 mensajes. |
-| 45 | ★ (continuación de la línea anterior) | El publisher se guarda en el atributo `velocity_pub_`. |
+| 44 | ★ `velocity_pub_ =` | Empieza a asignar el resultado de crear el publisher al atributo `velocity_pub_`. |
+| 45 | ★ `this->create_publisher<geometry_msgs::msg::TwistStamped>("target/velocity", 10);` | Crea el publisher de velocidad en el tópico `target/velocity`, con cola de 10 mensajes. |
 | 46 | ★ `auto timer_callback =` | Empieza a definir la función que ejecutará el timer. |
 | 47 | ★ `[this]()->void {` | Lambda sin parámetros que devuelve `void`. |
 | 48 | ★ `geometry_msgs::msg::TwistStamped msg;` | Crea el mensaje de velocidad a publicar. |
@@ -346,4 +350,4 @@ Con esto terminan los nodos de odometría y tf2. Continúa con
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Archivos de proyecto y construcción, línea por línea](Line-by-line-code-analysis.md) · ➡️ Siguiente: [Modos de guiado, línea por línea](Line-by-line-guidance-modes.md)
+🏠 [Inicio](Home.md) · ⬅️ Anterior: [Archivos de proyecto y construcción, línea por línea](Line-by-line-project-and-build-files.md) · ➡️ Siguiente: [Modos de guiado, línea por línea](Line-by-line-guidance-modes.md)

@@ -154,12 +154,14 @@ con **★** las líneas que no tienen equivalente en `pursuit_mode.cpp`.
 | 61 | `_tf_buffer = std::make_unique<tf2_ros::Buffer>(node.get_clock());` | Igual que en Pursuit. |
 | 62 | `_tf_listener = std::make_shared<tf2_ros::TransformListener>(*_tf_buffer);` | Igual. |
 | 64 | `}` | Cierra el constructor. |
+| 66 | ★ `// Safety checks` | Comentario que introduce `checkArmingAndRunConditions`; no tiene equivalente textual en Pursuit. |
 | 67 | `void checkArmingAndRunConditions(px4_ros2::HealthAndArmingCheckReporter & reporter) override` | Mismo método que en Pursuit. |
 | 68 | `{` | Abre el cuerpo. |
-| 69 | ★ `if (!_target_valid` OR `!_target_velocity_valid) {` | **Diferencia clave**: aquí se exige posición *y* velocidad válidas (la condición usa el operador "o" de C++ entre ambas negaciones); Pursuit solo exige posición. |
-| 70-73 | `reporter.armingCheckFailureExt(...)` | Igual que en Pursuit, mismo mensaje de error. |
+| 69 | ★ `if (!_target_valid \|\| !_target_velocity_valid) {` | **Diferencia clave**: aquí se exige posición *y* velocidad válidas (el `\|\|` es el operador "o" de C++ entre ambas negaciones); Pursuit solo exige posición. |
+| 70-73 | `reporter.armingCheckFailureExt(...)` | Igual que en Pursuit, mismo mensaje de error (el texto no menciona la velocidad aunque la condición sí la comprueba). |
 | 74 | `}` | Cierra el `if`. |
 | 75 | `}` | Cierra el método. |
+| 77 | ★ `// PN main logic` | Comentario que introduce `updateSetpoint`; sin equivalente en Pursuit. |
 | 78 | `void updateSetpoint(float dt_s) override` | Igual firma que en Pursuit. |
 | 79 | `{` | Abre el cuerpo. |
 | 80 | `(void)dt_s;` | Igual: parámetro no usado. |
@@ -171,7 +173,8 @@ con **★** las líneas que no tienen equivalente en `pursuit_mode.cpp`.
 | 99 | ★ `if (los.norm() < kPnMinRange) {` | Si la distancia es menor que `kPnMinRange` (7 m)... |
 | 100 | ★ `a_cmd = Eigen::Vector3f::Zero();` | ...no se aplica aceleración PN (demasiado cerca para que la fórmula sea fiable). |
 | 101 | ★ `} else {` | Si la distancia es mayor o igual a `kPnMinRange`... |
-| 102-103 | ★ `const Eigen::Vector3f los_rotation_rate = los.cross(v_rel) / (los.squaredNorm() + 1e-6f);` | Calcula ω, la velocidad de giro de la línea de visión; el `1e-6f` evita dividir exactamente por cero. |
+| 102 | ★ `// LOS rotation rate ω = (los × v_rel) / (los · los)` | Comentario que explica la fórmula de la siguiente línea. |
+| 103 | ★ `const Eigen::Vector3f los_rotation_rate = los.cross(v_rel) / (los.squaredNorm() + 1e-6f);` | Calcula ω, la velocidad de giro de la línea de visión; el `1e-6f` evita dividir exactamente por cero. |
 | 104 | ★ `a_cmd = kNavigationConstant * los_rotation_rate.cross(v_rel);` | Aplica la fórmula de navegación proporcional: aceleración proporcional a ω × velocidad relativa. |
 | 105 | ★ `const float a_cmd_norm = a_cmd.norm();` | Calcula el tamaño de esa aceleración. |
 | 107 | ★ `if (a_cmd_norm > 1e-6f) {` | Si la aceleración calculada no es prácticamente cero... |
@@ -185,6 +188,7 @@ con **★** las líneas que no tienen equivalente en `pursuit_mode.cpp`.
 | 123 | `const Eigen::Vector3f velocity{velocity_horizontal.x(), velocity_horizontal.y(), velocity_z};` | Igual que en Pursuit. |
 | 125 | ★ `_trajectory_setpoint->update(velocity, a_cmd, _last_yaw);` | **Diferencia clave**: aquí sí se envía `a_cmd` (Pursuit envía `{}`, sin aceleración). |
 | 126 | `}` | Cierra `updateSetpoint`. |
+| 128 | `private:` | Igual que en Pursuit (línea 77 de esa tabla): lo siguiente solo es accesible dentro de la clase. |
 | 129-149 | `updateTargetPosition()` completo | Idéntico línea por línea al de `pursuit_mode.cpp` (líneas 78-98 de esa tabla): mismo `lookupTransform`, mismo `catch`, misma conversión ENU→NED. |
 | 151 | `static constexpr float kMaxHorizontalSpeed = 7.0f;  // [m/s]` | **Valor distinto**: 7 m/s en vez de 5 m/s. |
 | 152 | `static constexpr float kMaxVerticalSpeed = 2.0f;    // [m/s]` | Igual valor que en Pursuit. |
@@ -208,10 +212,11 @@ con **★** las líneas que no tienen equivalente en `pursuit_mode.cpp`.
 
 Comparar estas dos tablas línea a línea es la forma más directa de ver
 exactamente qué añade PN sobre Pursuit: la suscripción de velocidad
-(líneas 42-59), `v_rel` (línea 88), el cálculo de `a_cmd` (líneas 96-112) y
-que `a_cmd` sí viaja en el `update()` final (línea 125). Todo lo demás —
-estructura de la clase, `checkArmingAndRunConditions`, `updateTargetPosition`,
-`main`— es el mismo patrón con nombres distintos.
+(líneas 42-59), la condición de armado que además exige velocidad válida
+(línea 69), `v_rel` (línea 88), el cálculo de `a_cmd` (líneas 96-112) y que
+`a_cmd` sí viaja en el `update()` final (línea 125). Todo lo demás —
+estructura de la clase, `updateTargetPosition`, `main`— es el mismo patrón
+con nombres distintos.
 
 ## Cómo relacionar líneas con comportamiento observable
 
@@ -242,10 +247,15 @@ Para leer una callback de odometría, separa mentalmente sus operaciones:
 4. **Almacenamiento**: ¿se guarda para otro timer o método?
 5. **Salida**: ¿publica un tópico, un transform o un log?
 
-En `target_tf2_odometry`, por ejemplo, una misma entrada produce dos salidas
-distintas: el transform se publica inmediatamente y la velocidad convertida se
-guarda para el timer de 100 ms. Esta separación explica por qué hay dos ritmos
-de ejecución.
+En la suscripción a `target/velocity` de `PN_mode.cpp` (líneas 46-59), por
+ejemplo: la entrada es un `TwistStamped` publicado por `target_tf2_odometry`;
+la extracción son los tres campos de `twist.linear`; la conversión pasa la
+velocidad de ENU a NED y de `double` a `float`; el almacenamiento son los
+atributos `_target_velocity_ned` y `_target_velocity_valid`; y la salida no es
+inmediata — no publica nada ni actualiza ningún transform, solo deja el dato
+listo para que `updateSetpoint` lo use más tarde al calcular `v_rel`. Por eso
+esta callback corre a su propio ritmo (uno por cada mensaje de `target/velocity`
+que llega) mientras que el guiado se recalcula en el ritmo de `updateSetpoint`.
 
 ## Qué no debe inferirse de una línea
 

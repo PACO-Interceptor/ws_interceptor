@@ -1,7 +1,7 @@
 # Mapa completo de archivos y dependencias
 
 Esta página cubre **todos los archivos que forman parte de `src/` y `.github/`**.
-El inventario actual contiene 591 archivos:
+El inventario actual contiene 592 archivos:
 
 | Zona | Archivos | Propósito |
 | --- | ---: | --- |
@@ -10,22 +10,18 @@ El inventario actual contiene 591 archivos:
 | `src/px4_ros_com` | 28 | Ejemplos y utilidades de comunicación entre ROS 2 y PX4. |
 | `src/px4-ros2-interface-lib` | 258 | Biblioteca vendorizada para registrar modos PX4 y enviar setpoints. |
 | `.github/workflows` | 3 | Automatización de CI, resúmenes de issues y releases. |
+| `.github/copilot-instructions.md` | 1 | Norma de idioma y estilo para los mensajes de commit generados con Copilot. |
 
 ## Cómo consultar este mapa
 
-No hace falta abrir los 591 archivos en orden. El número indica cuántos archivos
-hay, no una secuencia de lectura. Empieza por `src/interceptor`,
-porque es el código de este proyecto; después consulta solo la dependencia que
-necesites entender.
-
-Cuando veas una carpeta, piensa que es una caja con un propósito. Cuando veas un
-archivo, pregunta si contiene instrucciones, datos, configuración o
-documentación. Esta clasificación es más útil que memorizar los nombres.
-
-## Cómo interpretar el inventario
-
-No todos los archivos son algoritmos ejecutados por el interceptor. Hay cinco
-tipos principales:
+No hace falta abrir los 592 archivos en orden: el número indica cuántos archivos
+hay, no una secuencia de lectura. Empieza por `src/interceptor`, porque es el
+código de este proyecto, y después consulta solo la dependencia que necesites
+entender. Cuando veas una carpeta, piensa que es una caja con un propósito;
+cuando veas un archivo, pregunta si contiene instrucciones, datos,
+configuración o documentación. Esta clasificación es más útil que memorizar
+los nombres, y encaja con los cinco tipos principales que aparecen en el
+inventario:
 
 1. **Código propio**: `src/interceptor`.
 2. **Dependencias vendorizadas**: los otros tres paquetes dentro de `src/`.
@@ -78,10 +74,10 @@ que ROS 2 intercambie datos con PX4.
 | `CODE_OF_CONDUCT.md` | 1 | Normas de convivencia. |
 | `SECURITY.md` | 1 | Proceso de reporte de vulnerabilidades. |
 | `LICENSE` | 1 | Licencia BSD-3-Clause. |
-| `.github/` | 15 | Plantillas, configuración de dependabot y workflows del upstream. |
+| `.github/` | 10 | Plantillas, configuración de dependabot y workflows del upstream. |
 | `container/` | 2 | Dockerfile y scripts para construir paquetes Debian. |
-| `scripts/` | 7 | Automatización de changelog, releases y builds. |
-| `.gitignore`, `.dockerignore`, `.pre-commit-config.yaml` | 4 | Exclusiones y herramientas de desarrollo. |
+| `scripts/` | 3 | Automatización de changelog, releases y builds. |
+| `.gitignore`, `.dockerignore`, `.pre-commit-config.yaml` | 3 | Exclusiones y herramientas de desarrollo. |
 
 ### Cómo leer un `.msg`
 
@@ -102,13 +98,14 @@ versión de PX4 que publica esos campos.
 | `CMakeLists.txt` y `package.xml` | 2 | Construyen el paquete y declaran Eigen, ROS 2 y `px4_msgs`. |
 | `include/px4_ros_com/` | 1 header | Declara las conversiones de marcos, usadas por el interceptor. |
 | `src/lib/frame_transforms.cpp` | 1 | Implementa conversiones NED/ENU y orientaciones PX4/ROS. |
-| `src/examples/` | 11 | Ejemplos C++ de listeners, advertisers y offboard. |
+| `src/examples/` | 5 | Ejemplos C++ de listeners, advertisers y offboard. |
 | `src/examples/offboard_py/` | 1 | Ejemplo Python de control offboard. |
-| `launch/` | 1 | Launch de ejemplos de comunicación. |
-| `test/` | 2 | Pruebas del paquete externo. |
-| `scripts/` | 3 | Scripts de instalación y compilación. |
+| `px4_ros_com/` (paquete Python) | 2 | `__init__.py` y `module_to_import.py`, ambos vacíos: el esqueleto Python que instala `ament_python_install_package` en `CMakeLists.txt`, sin uso real en los ejemplos actuales. |
+| `launch/` | 2 | Launch de ejemplos de comunicación (YAML y Python). |
+| `test/` | 4 | Pruebas Python del paquete externo. |
+| `scripts/` | 4 | Scripts de instalación y compilación. |
 | `README.md`, `LICENSE` | 2 | Documentación y licencia. |
-| `.github/`, `.vscode/`, `.gitignore` | 5 | CI, configuración del editor y exclusiones. |
+| `.github/`, `.vscode/`, `.gitignore` | 4 | CI, configuración del editor y exclusiones. |
 
 El archivo que usa directamente nuestro código es
 `include/px4_ros_com/frame_transforms.h`. Sus funciones evitan duplicar a mano
@@ -122,17 +119,16 @@ Esta dependencia proporciona `px4_ros2::ModeBase`,
 
 | Zona | Archivos actuales | Explicación |
 | --- | ---: | --- |
-| `px4_ros2_cpp/` | 136 aprox. | Biblioteca C++: headers públicos, implementación, componentes, odometría, navegación, setpoints y tests. |
-| `px4_ros2_py/` | 14 aprox. | Bindings y paquete Python experimental. |
-| `examples/cpp/` | 47 aprox. | Modos y ejemplos C++: goto, misión, rover, VTOL, manual y navegación. |
-| `examples/python/` | 11 aprox. | Ejemplos Python de modos. |
-| `mission/` | 8 aprox. | Esquemas y ejemplos JSON para misiones. |
-| `python_docs/` | 4 aprox. | Configuración y páginas de documentación Python. |
-| `scripts/` | 5 aprox. | Comprobación de compatibilidad, topics, clang-tidy y Doxygen. |
-| `CMakeLists.txt`, `package.xml` y `rosdep-*.yaml` | 10 aprox. | Construcción y dependencias por distribución ROS. |
-| `.github/` | 14 aprox. | CI, lint, publicación, ramas y validación. |
-| `.clang-*`, `.pre-commit-config.yaml`, `.vscode/` | 8 aprox. | Formato, análisis estático, hooks y editor. |
-| `README.md`, `LICENSE`, `Doxyfile`, `.gitignore` | 4 | Documentación, licencia y generación de API. |
+| `px4_ros2_cpp/` | 146 | Biblioteca C++: headers públicos, implementación, componentes, odometría, navegación, setpoints y tests. Incluye su propio `CMakeLists.txt`, `package.xml` y `rosdep-*.yaml` por distribución ROS. |
+| `px4_ros2_py/` | 17 | Bindings y paquete Python experimental, con su propio `CMakeLists.txt` y `package.xml`. |
+| `examples/cpp/` | 54 | Modos y ejemplos C++: goto, misión, rover, VTOL, manual y navegación; cada ejemplo trae su propio `CMakeLists.txt` y `package.xml`. |
+| `examples/python/` | 12 | Ejemplos Python de modos, cada uno con su propio `package.xml`. |
+| `mission/` | 2 | Un esquema (`schema.yaml`) y un ejemplo (`pickup.json`) de misión. |
+| `python_docs/` | 5 | Configuración y páginas de documentación Python (Sphinx). |
+| `scripts/` | 5 | Comprobación de compatibilidad, topics, clang-tidy y Doxygen. |
+| `.github/` | 6 | Workflows de CI, lint, publicación de paquetes Debian, ramas de release y validación de misiones. |
+| `.clang-format`, `.clang-format-ignore`, `.clang-tidy`, `.pre-commit-config.yaml`, `.vscode/` | 5 | Formato, análisis estático, hooks y editor. |
+| `README.md`, `LICENSE`, `Doxyfile`, `.gitignore`, `dependencies.repos`, `ruff.toml` | 6 | Documentación, licencia, generación de API, exclusiones, dependencias externas y configuración del linter Python `ruff`. |
 
 ### Qué ocurre cuando usamos esta biblioteca
 
@@ -194,60 +190,48 @@ El producto que el equipo está desarrollando es principalmente
 con PX4. `.github/workflows` automatiza el mantenimiento del repositorio, pero
 no se ejecuta durante el vuelo.
 
-Esta distinción ayuda a decidir dónde abrir un issue o proponer un cambio:
+Esta distinción ayuda a decidir dónde mirar ante un fallo, y qué hacer antes de
+tocar un archivo:
 
-- fallo en el algoritmo o en un tópico propio: `src/interceptor`;
+- fallo en el algoritmo o en un tópico propio: `src/interceptor`, que es
+  código que mantenemos nosotros;
 - mensaje ausente o incompatible: revisar `px4_msgs` y la versión de PX4;
 - conversión de coordenadas: revisar `px4_ros_com`;
 - registro del modo/setpoint: revisar `px4-ros2-interface-lib`;
 - compilación o pruebas automáticas: raíz `.github` y `CMakeLists.txt`;
-- documentación o instrucciones: README y wiki.
-
-## Límite de la documentación de terceros
-
-Los inventarios de terceros indican qué hay y cómo se relaciona con el proyecto,
-pero no sustituyen sus manuales ni describen cada línea de cientos de archivos.
-Cuando sea necesario modificar una dependencia, hay que consultar la versión
-upstream correspondiente, su licencia, su changelog y sus pruebas. Así se evita
-atribuir al equipo interceptor una implementación que realmente mantiene otro
-proyecto.
+- documentación o instrucciones: README y wiki;
+- si el archivo está en `px4_msgs`, `px4_ros_com` o `px4-ros2-interface-lib`,
+  es una dependencia externa: antes de modificarlo hay que consultar su
+  versión upstream, su licencia, su changelog y sus pruebas, para no acabar
+  manteniendo nosotros una implementación que en realidad mantiene otro
+  proyecto — y si es un `.msg`/`.srv` o un `CMakeLists.txt`/`package.xml`, el
+  cambio además altera un contrato de comunicación o la compilación/runtime;
+- si el archivo está bajo `.github`, puede alterar CI, permisos o releases.
 
 ## `.github/workflows`: automatización del repositorio
 
-Esta sección cubre línea por línea los tres workflows propios del repositorio
-(no los de las dependencias vendorizadas, ver más abajo).
+Esta sección resume qué hace cada uno de los tres workflows propios del
+repositorio (no los de las dependencias vendorizadas, ver más abajo). El único
+archivo de `.github/` que no es un workflow es
+[`copilot-instructions.md`](../../.github/copilot-instructions.md): una
+instrucción de una línea para que GitHub Copilot escriba los mensajes de
+commit en español, cortos y en imperativo.
 
 ### `ci-build.yml`
 
 Archivo: [`ci-build.yml`](../../.github/workflows/ci-build.yml)
 
-Se ejecuta en `push` y pull request hacia `main` o `master`. Usa Ubuntu 24.04
-con `ros:jazzy-ros-base`, instala `colcon`, `rosdep` y dependencias, compila
-hasta `interceptor`, ejecuta tests y muestra el resultado. Es la reproducción
-automática de los comandos de [Instalación y compilación](Installation-and-build.md).
-
-| Línea/bloque | Explicación |
-| --- | --- |
-| `name: CI - Build ROS 2 workspace` | Nombre visible en GitHub Actions. |
-| `on: push` | Ejecuta CI al subir cambios. |
-| `branches: [main, master]` | Solo para esas ramas. |
-| `pull_request` | Ejecuta CI en pull requests hacia esas ramas. |
-| `jobs: build` | Define un job llamado `build`. |
-| `runs-on: ubuntu-24.04` | Usa runner Ubuntu 24.04. |
-| `container: ros:jazzy-ros-base` | Ejecuta pasos dentro de una imagen ROS 2 Jazzy. |
-| `actions/checkout@v4` | Descarga el repositorio al runner. |
-| `apt-get update` | Actualiza índices de paquetes Debian. |
-| `apt-get install ...` | Instala colcon, rosdep y compilador. |
-| `rosdep init` seguido de `true` | Inicializa rosdep; el `true` evita que el paso falle si ya estaba inicializado. |
-| `rosdep update` | Actualiza el índice de rosdep. |
-| `rosdep install ...` | Instala dependencias de todos los paquetes fuente. |
-| `source /opt/ros/jazzy/setup.bash` | Prepara el entorno ROS. |
-| `colcon build --packages-up-to interceptor ...` | Compila el paquete objetivo y dependencias. |
-| `colcon test --packages-select interceptor ...` | Ejecuta tests/lint del paquete propio. |
-| `colcon test-result --verbose` | Muestra resultados y fallos detallados. |
-
-La indentación YAML es significativa: `steps` contiene acciones, cada acción
-tiene `name` y `run`, y el bloque `|` conserva comandos multilínea.
+Se ejecuta en `push` y pull request hacia `main` o `master`. El job corre en
+`ubuntu-24.04` dentro del contenedor `ros:jazzy-ros-base`, hace checkout,
+instala `colcon`, `rosdep` y el compilador con `apt-get`, e inicializa rosdep
+(`rosdep init` seguido de `true`, para que el paso no falle si ya estaba
+inicializado) antes de instalar las dependencias declaradas por todos los
+paquetes fuente. Con el entorno ROS ya cargado (`source
+/opt/ros/jazzy/setup.bash`), compila hasta `interceptor` con `colcon build
+--packages-up-to interceptor`, ejecuta `colcon test --packages-select
+interceptor` y muestra el resultado con `colcon test-result --verbose`. Es la
+reproducción automática de los comandos de
+[Instalación y compilación](Installation-and-build.md).
 
 ### `summary.yml`
 
@@ -293,21 +277,15 @@ codeowners y configuración de seguridad. No controlan directamente el workflow
 raíz de `ws_interceptor`; cada repositorio conserva sus propias automatizaciones
 porque las dependencias se han copiado dentro de este workspace.
 
-## Regla práctica para cualquier archivo nuevo
-
-Antes de modificar un archivo, pregunta:
-
-1. ¿Está bajo `src/interceptor`? Entonces probablemente es código que mantenemos.
-2. ¿Está bajo otro paquete de `src`? Entonces es una dependencia externa y hay que
-   consultar su upstream y versión.
-3. ¿Es `.msg` o `.srv`? Cambiarlo altera un contrato de comunicación.
-4. ¿Es `CMakeLists.txt` o `package.xml`? Cambiarlo altera compilación o runtime.
-5. ¿Está bajo `.github`? Puede alterar CI, permisos o releases.
-
-Este mapa es el índice de lectura. Para comprender las líneas de los archivos
-propios, continúa con [Lectura guiada del código](Code-walkthrough.md) y para
-comprobar el sistema usa [Referencia rápida y solución de problemas](Quick-reference-and-troubleshooting.md).
+Si has seguido el recorrido recomendado de la wiki, este mapa llega después de
+[Lectura guiada del código](Code-walkthrough.md) y de las tres páginas de
+"Análisis línea por línea", así que el siguiente paso natural es
+[Referencia rápida y solución de problemas](Quick-reference-and-troubleshooting.md).
+Si en cambio llegaste directo a esta página sin pasar por las anteriores, úsala
+como índice para localizar el archivo que buscas, y luego consulta
+[Lectura guiada del código](Code-walkthrough.md) o las páginas de
+"Análisis línea por línea" para entender sus líneas en detalle.
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Análisis línea por línea: modos de guiado](Line-by-line-guidance-modes.md) · ➡️ Siguiente: [Referencia y solución de problemas](Quick-reference-and-troubleshooting.md)
+🏠 [Inicio](Home.md) · ⬅️ Anterior: [Análisis línea por línea: modos de guiado](Line-by-line-guidance-modes.md) · ➡️ Siguiente: [Referencia rápida y solución de problemas](Quick-reference-and-troubleshooting.md)

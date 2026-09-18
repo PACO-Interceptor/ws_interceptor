@@ -58,7 +58,7 @@ La documentación está ordenada para seguir el sistema de extremo a extremo:
 8. [Análisis línea por línea: nodos de odometría y tf2](Line-by-line-odometry-nodes.md)
 9. [Análisis línea por línea: modos de guiado](Line-by-line-guidance-modes.md)
 10. [Mapa del workspace y dependencias](Workspace-file-map.md)
-11. [Referencia y solución de problemas](Quick-reference-and-troubleshooting.md)
+11. [Referencia rápida y solución de problemas](Quick-reference-and-troubleshooting.md)
 
 ## Glosario mínimo
 

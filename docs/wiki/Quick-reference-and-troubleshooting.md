@@ -8,12 +8,19 @@ capa cada vez y no cambiar muchas cosas simultáneamente.
 ## Comandos habituales
 
 ```bash
-# Ver nodos activos
+# Ver nodos y tópicos activos
 ros2 node list
-
-# Ver tópicos y tipos
 ros2 topic list
+
+# Ver quién publica/suscribe un nodo o un tópico
+ros2 node info /target_tf2_frame_publisher
+ros2 topic info /target/velocity
+
+# Ver el tipo de mensaje de un tópico
 ros2 topic type /target/velocity
+
+# Medir la frecuencia de publicación
+ros2 topic hz /target/velocity
 
 # Inspeccionar mensajes
 ros2 topic echo /target/velocity
@@ -23,10 +30,10 @@ ros2 topic echo /px4_1/fmu/out/vehicle_odometry
 ros2 run interceptor target_tf2_odometry
 ```
 
-`echo` muestra los mensajes que pasan por un tópico, `hz` calcula cuántos
-mensajes llegan por segundo e `info` muestra quién publica o recibe. `run`
-arranca un ejecutable. Estos comandos normalmente observan el sistema; no
-cambian la trayectoria del dron por sí solos.
+`list` enumera qué existe, `info` muestra quién publica o se suscribe a un
+nodo o tópico concreto, `type` muestra el tipo de mensaje, `hz` calcula
+cuántos mensajes llegan por segundo, `echo` muestra los mensajes que pasan
+por un tópico y `run` arranca un ejecutable.
 
 ## Secuencia de diagnóstico recomendada
 
@@ -173,4 +180,4 @@ limitaciones siguen existiendo.
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Mapa del workspace y dependencias](Workspace-file-map.md) · 🏠 Volver a [Inicio](Home.md)
+🏠 [Inicio](Home.md) · ⬅️ Anterior: [Mapa del workspace y dependencias](Workspace-file-map.md)

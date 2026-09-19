@@ -54,6 +54,7 @@ ament_target_dependencies(target_tf2_odometry
   geometry_msgs
   px4_msgs
   px4_ros_com
+  px4_ros2_cpp
   sensor_msgs
 )
 

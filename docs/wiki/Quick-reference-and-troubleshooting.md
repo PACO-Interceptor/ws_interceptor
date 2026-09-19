@@ -65,6 +65,56 @@ depurar PN mientras el tópico de odometría del target está vacío.
 
 ## Problemas frecuentes
 
+### `pursuit_mode` / `PN_mode` mueren con `Registration failed`
+
+Si el log del launch muestra, a los ~15 s de arrancar:
+
+```text
+[pursuit_mode]: timeout while waiting for FMU publisher discovery
+terminate called after throwing an instance of 'px4_ros2::Exception'
+  what():  Registration failed
+```
+
+o bien:
+
+```text
+[PN_mode]: Mismatch for the following topics, update PX4 or the px4_ros2 library and px4_msgs:
+  - fmu/out/manual_control_setpoint
+```
+
+la versión de PX4 no coincide con el `px4_msgs` vendorizado: los modos buscan
+tópicos con un nombre o formato que ese PX4 no publica (por ejemplo, esperan
+`/fmu/out/vehicle_status_v4` y PX4 v1.17.0 publica `vehicle_status_v1`).
+Compila PX4 en el commit indicado en
+[Instalación y compilación](Installation-and-build.md#px4). Para ver qué
+versión publica tu PX4:
+
+```bash
+ros2 topic list | grep vehicle_status
+```
+
+### El target no publica odometría (sensores ausentes)
+
+Si la terminal de la instancia `1` repite `Preflight Fail: Accel Sensor 0
+missing`, `barometer 0 missing` o `ekf2 missing data`, y
+`ros2 topic hz /px4_1/fmu/out/vehicle_odometry` no muestra frecuencia aunque el
+tópico exista, la instancia `1` se arrancó sin `GZ_IP=127.0.0.1`: Gazebo crea el
+dron, pero PX4 no recibe sus sensores. Detén esa instancia y arráncala con la
+orden completa de [Ejecución de la simulación](Simulation.md#2-iniciar-px4-del-target).
+
+### `Arming denied` / `No connection to the GCS`
+
+PX4 no deja armar sin una estación de tierra conectada. Abre QGroundControl
+(ver [Ejecución de la simulación](Simulation.md#4-abrir-qgroundcontrol)); en
+cuanto se conecta, el aviso desaparece.
+
+### El modo da el objetivo por alcanzado sin moverse
+
+Si al activar **PN mode** o **Pursuit Intercept** el log muestra enseguida
+`Target reached. Stopping pursuit.` y el interceptor no se mueve, aunque en
+Gazebo el target esté lejos, los dos PX4 tienen orígenes distintos. Aplica el
+paso [Poner a los dos drones en el mismo origen](Simulation.md#poner-a-los-dos-drones-en-el-mismo-origen).
+
 ### No aparece `VehicleOdometry`
 
 Comprueba que las dos instancias PX4 estén ejecutándose, que el agente esté

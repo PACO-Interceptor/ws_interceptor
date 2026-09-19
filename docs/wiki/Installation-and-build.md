@@ -21,6 +21,8 @@ proyecto es la carpeta `ws_interceptor` que descargas más abajo con
 - **PX4**: produce la odometría y recibe los setpoints de vuelo.
 - **Micro XRCE-DDS Agent**, instalado en `~/Micro-XRCE-DDS-Agent`: conecta el
   transporte uXRCE-DDS de PX4 con el grafo DDS que utilizan los nodos ROS 2.
+- **QGroundControl v5.1.4**: la estación de tierra desde la que se arman los
+  drones, se mueve el target y se elige el modo de guiado del interceptor.
 
 No basta con tener los comandos instalados: también deben ser compatibles entre
 sí — la sección de PX4 más abajo indica exactamente qué versión conviene
@@ -72,6 +74,19 @@ Si te falta alguno, aquí tienes su guía oficial de instalación:
   sudo apt install python3-colcon-common-extensions python3-rosdep
   sudo rosdep init   # solo la primera vez en el sistema
   ```
+- **QGroundControl v5.1.4**: descarga `QGroundControl-x86_64.AppImage` de la
+  [release v5.1.4](https://github.com/mavlink/qgroundcontrol/releases/tag/v5.1.4)
+  y sigue la
+  [guía oficial de instalación para Linux](https://docs.qgroundcontrol.com/Stable_V5.1/en/qgc-user-guide/getting_started/download_and_install.html),
+  que explica los paquetes del sistema que necesita. Usa esa versión concreta
+  y no la "última" ni la *Daily*: es la que se ha probado junto con la versión
+  de PX4 de esta página.
+
+Una **estación de tierra** (*GCS*, *Ground Control Station*) es el programa
+con el que una persona supervisa y manda órdenes al vehículo: armar, despegar,
+cambiar de modo, indicar un destino en el mapa. PX4 comprueba que haya una
+conectada antes de dejar armar; sin QGroundControl abierto, el armado se
+rechaza con `No connection to the GCS`.
 
 PX4 y el Micro XRCE-DDS Agent no se cubren con un enlace suelto, porque la
 [guía oficial de PX4 + ROS 2, sección Jazzy](https://docs.px4.io/main/en/ros2/user_guide#jazzy)
@@ -83,10 +98,18 @@ versiones que se usan abajo.
 
 #### PX4
 
-El `px4_msgs` vendorizado en `src/px4_msgs` está en la versión **1.17.0**, y
-su propio `CHANGELOG.rst` dice que está "sincronizado con PX4 Autopilot
-1.17.0" — así que conviene compilar exactamente esa versión, para evitar
-incompatibilidades de mensajes al registrar un modo. No hace falta crear un
+PX4 y los nodos ROS 2 solo se entienden si usan **exactamente las mismas
+definiciones de mensajes**. Muchos mensajes de PX4 llevan una versión
+(`MESSAGE_VERSION`) que forma parte del nombre del tópico: por ejemplo, un
+`VehicleStatus` de versión 4 se publica en `/fmu/out/vehicle_status_v4`. Si
+PX4 publica una versión y `px4_ros2_cpp` espera otra, los modos no encuentran
+los tópicos y mueren al arrancar con `Registration failed`.
+
+El `px4_msgs` vendorizado en `src/px4_msgs` coincide, mensaje a mensaje, con
+PX4 `main` en el commit **`14b3f44081`** (28 de julio de 2026). Su
+`CHANGELOG.rst` dice "1.17.0", pero **no** es compatible con la release
+`v1.17.0` (allí `VehicleStatus` va por la versión 1), ni con el `main` actual
+de PX4. Por eso hay que compilar ese commit concreto. No hace falta crear un
 workspace ROS 2 con `px4_msgs` (un paso que sí pide la guía de PX4 en
 general): aquí ya está vendorizado.
 
@@ -96,14 +119,18 @@ donde prefieras guardar tus proyectos, por ejemplo tu carpeta personal:
 
 ```bash
 cd ~
-git clone https://github.com/PX4/PX4-Autopilot.git --recursive -b v1.17.0
-bash ./PX4-Autopilot/Tools/setup/ubuntu.sh
+git clone https://github.com/PX4/PX4-Autopilot.git
 cd PX4-Autopilot
+git checkout 14b3f44081
+git submodule update --init --recursive
+bash ./Tools/setup/ubuntu.sh
 make px4_sitl gz_x500
 ```
 
-`--recursive` descarga también los submódulos de git que usa PX4. El script
-`Tools/setup/ubuntu.sh` instala las herramientas de compilación y de
+`git checkout` fija el commit (no existe una etiqueta con nombre para él, por
+eso no se usa `-b` al clonar). `git submodule update --init --recursive`
+descarga los submódulos de git que usa PX4 en las versiones de ese commit. El
+script `Tools/setup/ubuntu.sh` instala las herramientas de compilación y de
 simulación (incluida Gazebo). El último comando compila y arranca una vez de
 prueba con el modelo `gz_x500`, el mismo que se usa en
 [Simulation.md](Simulation.md).
@@ -128,9 +155,9 @@ basta: no hace falta `sudo make install`, porque `interceptor.launch.py`
 ejecuta directamente `build/MicroXRCEAgent` dentro de esta misma carpeta. Si
 lo instalas en otra ruta, ajusta `MICRO_XRCE_DDS_AGENT_DIR` en ese archivo.
 
-Ubuntu, ROS 2, `colcon`/`rosdep`, PX4 y el Agent son instalaciones de sistema,
-independientes de este repositorio: se hacen una sola vez por máquina, no
-cada vez que compilas `interceptor`.
+Ubuntu, ROS 2, `colcon`/`rosdep`, PX4, el Agent y QGroundControl son
+instalaciones de sistema, independientes de este repositorio: se hacen una sola
+vez por máquina, no cada vez que compilas `interceptor`.
 
 ## Descargar el workspace
 

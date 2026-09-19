@@ -43,10 +43,14 @@ Or a single node: `ros2 run interceptor <executable>` (executable names = source
 `pursuit_mode`, `PN_mode`).
 
 The launch file starts the Micro XRCE-DDS Agent (expected at `~/Micro-XRCE-DDS-Agent`) plus the
-interceptor package's nodes. It does **not** start PX4 SITL itself — that's run manually per the
-comment at the top of `src/interceptor/launch/interceptor.launch.py`:
+interceptor package's nodes. It does **not** start PX4 SITL itself — that's run manually from
+`~/PX4-Autopilot`, checked out at commit `14b3f44081` (the one the vendored `px4_msgs` matches;
+see `docs/wiki/Installation-and-build.md`):
 - drone 0 (interceptor): `make px4_sitl gz_x500`
-- drone 1 (target): `PX4_SIM_MODEL=gz_x500 /build/px4_sitl_default/bin/px4 -i 1`
+- drone 1 (target): `GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_default/bin/px4 -i 1`
+
+Without `GZ_IP` the target gets no sensor data; without `PX4_GZ_MODEL_POSE` it spawns inside the
+interceptor. Arming requires QGroundControl v5.1.4 connected (see `docs/wiki/Simulation.md`).
 
 ## Architecture
 

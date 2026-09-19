@@ -8,7 +8,9 @@ Workspace ROS 2 para el seguimiento e interceptación de un vehículo usando dat
 - ROS 2 Jazzy
 - `colcon`
 - `rosdep`
-- PX4 y Micro XRCE-DDS Agent si se va a ejecutar la simulación
+- Para ejecutar la simulación: PX4 en el commit `14b3f44081`, Micro XRCE-DDS
+  Agent `v2.4.3` y QGroundControl `v5.1.4` (versiones probadas juntas; ver
+  [Instalación y compilación](docs/wiki/Installation-and-build.md))
 
 ## Obtener el workspace
 

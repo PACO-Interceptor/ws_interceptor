@@ -43,7 +43,7 @@ sequenceDiagram
 
     T1->>T1: make px4_sitl gz_x500 (instancia 0)
     Note over T1: esperar a que termine el arranque
-    T2->>T2: PX4_SIM_MODEL=gz_x500 ... px4 -i 1 (instancia 1)
+    T2->>T2: GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" ... px4 -i 1 (instancia 1)
     Note over T2: esperar a que termine el arranque
     T3->>T3: ros2 launch interceptor interceptor.launch.py
     T3->>T3: arranca Micro XRCE-DDS Agent (udp4, puerto 8888)
@@ -62,6 +62,7 @@ está corriendo, ninguna de las dos instancias PX4 llega a ROS 2 aunque estén
 En el directorio de PX4:
 
 ```bash
+cd ~/PX4-Autopilot
 make px4_sitl gz_x500
 ```
 
@@ -73,17 +74,28 @@ herramienta de simulación.
 
 ### 2. Iniciar PX4 del target
 
-En otra terminal de PX4:
+En otra terminal:
 
 ```bash
-PX4_SIM_MODEL=gz_x500 /build/px4_sitl_default/bin/px4 -i 1
+cd ~/PX4-Autopilot
+GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_default/bin/px4 -i 1
 ```
 
-Esta es la instancia `1` (el target, ver arriba).
+Esta es la instancia `1` (el target, ver arriba). Aquí no se usa `make`: el
+simulador ya lo arrancó la instancia `0`, así que se ejecuta directamente el
+binario de PX4 que compiló el paso anterior. Cada parte de la orden importa:
 
-La ruta `/build/px4_sitl_default/bin/px4` depende de dónde esté el árbol de
-PX4. Si ese binario no existe, localiza el ejecutable generado en el build de
-PX4 y conserva el argumento `-i 1`, que es el que asigna la instancia.
+- `./build/...`: la ruta es relativa a `~/PX4-Autopilot` (empieza por `./`). Con
+  `/build/...` el sistema la buscaría desde la raíz del disco y no la encontraría.
+- `GZ_IP=127.0.0.1`: dirección por la que PX4 habla con Gazebo. `make` la fija
+  sola para la instancia `0`; si la instancia `1` no usa la misma, Gazebo crea
+  el dron pero PX4 no recibe sus sensores (`Accel Sensor 0 missing`,
+  `ekf2 missing data`) y no publica odometría.
+- `PX4_GZ_MODEL_POSE="0,20"`: posición inicial del target en Gazebo, en metros
+  (`x,y`): aquí, 20 m al norte del interceptor. Sin ella, el target aparece en
+  el mismo punto que el interceptor, uno dentro del otro.
+- `PX4_SIM_MODEL=gz_x500`: el mismo modelo de dron que la instancia `0`.
+- `-i 1`: el número de instancia, que da el prefijo `/px4_1/` a sus tópicos.
 
 ### 3. Iniciar el launch del proyecto
 
@@ -99,9 +111,16 @@ significa comunicación UDP usando IPv4: una forma de enviar paquetes por la
 red sin mantener una conexión permanente; aquí se usa dentro del propio
 ordenador, para que el agente reciba los datos que le manda PX4.
 
+El launch no inicia PX4 SITL. Los dos comandos anteriores son obligatorios si
+se quiere probar con simulación.
 
+### 4. Abrir QGroundControl
 
- El launch no inicia PX4 SITL. Los dos comandos anteriores son obligatorios si se quiere probar con simulación.
+Abre QGroundControl v5.1.4 (ver [Instalación y compilación](Installation-and-build.md)).
+Se conecta solo a las dos instancias por UDP (puerto `14550`), sin configurar
+nada: el interceptor aparece como vehículo `1` y el target como vehículo `2`.
+Mientras QGroundControl no esté abierto, PX4 no deja armar
+(`Preflight Fail: No connection to the GCS`).
 
 ## Cómo saber si el arranque funcionó
 
@@ -117,6 +136,54 @@ Deberías ver los nodos del paquete, los tópicos de odometría de las dos
 instancias y una frecuencia aproximada de 10 Hz para `target/velocity`. La
 frecuencia exacta puede variar; lo importante al principio es que existan datos
 que cambien.
+
+## Probar el guiado
+
+### Poner a los dos drones en el mismo origen
+
+Cada PX4 mide su posición local desde el punto donde arrancó (su *origen*).
+Como el target arranca 20 m al norte, su origen está 20 m al norte del del
+interceptor, y los modos de guiado comparan posiciones medidas desde orígenes
+distintos: el target les parece estar donde está el interceptor y dan el
+objetivo por alcanzado sin moverse. Hasta que eso se corrija en el código, hay
+que darle al target el mismo origen que al interceptor.
+
+En la terminal 1 (la consola `pxh>` del interceptor), lee su origen:
+
+```text
+listener vehicle_local_position
+```
+
+Apunta `ref_lat`, `ref_lon` y `ref_alt`. En la terminal 2 (la consola `pxh>`
+del target), aplica esos valores:
+
+```text
+commander set_ekf_origin <ref_lat> <ref_lon> <ref_alt>
+```
+
+Si responde `commander not running`, espera unos segundos y repítelo. Para
+comprobarlo, `ros2 run tf2_ros tf2_echo map target/base_link` debe situar al
+target a unos 20 m (`y` ≈ 20), no en `0`. Hay que repetir este paso cada vez
+que se arranquen las instancias.
+
+### Volar
+
+En QGroundControl, eligiendo cada vehículo en el selector de vehículo de la
+barra superior:
+
+1. **Target (vehículo 2)**: despega (*Takeoff*). Cuando esté en el aire, pulsa
+   en el mapa y usa *Go to location* para mandarlo a otro punto; así la
+   persecución es contra un objetivo en movimiento.
+2. **Interceptor (vehículo 1)**: despega (*Takeoff*) y, ya en el aire, elige
+   en el selector de modo de vuelo **PN mode** o **Pursuit Intercept**.
+
+El interceptor sale a por el target. El modo solo se deja seleccionar cuando
+recibe datos del target; si no, PX4 lo rechaza con
+`No target odometry received yet` (ver
+[Solución de problemas](Quick-reference-and-troubleshooting.md)). Al alcanzarlo
+(a menos de 1 m) el log muestra `Target reached. Stopping pursuit.`, pero el
+interceptor sigue en el modo: si el target se aleja, vuelve a perseguirlo.
+Para terminar, cambia el interceptor a *Hold* o *Land*.
 
 ## Ejecutar un nodo individual
 

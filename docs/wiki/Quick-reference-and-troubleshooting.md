@@ -108,12 +108,47 @@ PX4 no deja armar sin una estación de tierra conectada. Abre QGroundControl
 (ver [Ejecución de la simulación](Simulation.md#4-abrir-qgroundcontrol)); en
 cuanto se conecta, el aviso desaparece.
 
+### No aparece `map -> target/base_link` y el log habla de la referencia global
+
+Si el log de `target_tf2_odometry` repite, como mucho cada 5 segundos:
+
+```text
+Waiting for global reference (ref_lat/ref_lon/ref_alt) of interceptor and target
+before publishing map -> target/base_link
+```
+
+el nodo está esperando a que el estimador de uno de los dos drones (o de los
+dos: el aviso dice cuál falta) fije su posición global. Sin esa referencia no
+puede colocar al target en el marco del interceptor, así que prefiere no
+publicar nada antes que publicar una posición mezclada. Normalmente se resuelve
+solo en unos segundos tras arrancar PX4. Si no, comprueba que la instancia tenga
+GPS simulado:
+
+```bash
+ros2 topic echo --once /fmu/out/vehicle_local_position_v1 --field xy_global
+```
+
+Debe decir `true`. Mientras tanto, los modos de guiado no dejan armar, porque no
+reciben datos del target.
+
 ### El modo da el objetivo por alcanzado sin moverse
 
 Si al activar **PN mode** o **Pursuit Intercept** el log muestra enseguida
 `Target reached. Stopping pursuit.` y el interceptor no se mueve, aunque en
-Gazebo el target esté lejos, los dos PX4 tienen orígenes distintos. Aplica el
-paso [Poner a los dos drones en el mismo origen](Simulation.md#poner-a-los-dos-drones-en-el-mismo-origen).
+Gazebo el target esté lejos, los dos drones están midiendo desde orígenes
+distintos. `target_tf2_odometry` lo corrige solo, así que comprueba primero que
+ese nodo esté vivo y publicando:
+
+```bash
+ros2 run tf2_ros tf2_echo map target/base_link
+```
+
+La distancia que muestre debe parecerse a la separación real en Gazebo. Como
+solución manual, se puede dar a los dos PX4 el mismo origen: lee `ref_lat`,
+`ref_lon` y `ref_alt` en la consola `pxh>` del interceptor con
+`listener vehicle_local_position` y aplícalos en la del target con
+`commander set_ekf_origin <ref_lat> <ref_lon> <ref_alt>`. Si responde
+`commander not running`, espera unos segundos y repite.
 
 ### No aparece `VehicleOdometry`
 

@@ -45,9 +45,9 @@ sequenceDiagram
     Note over T1: esperar a que termine el arranque
     T2->>T2: GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" ... px4 -i 1 (instancia 1)
     Note over T2: esperar a que termine el arranque
-    T3->>T3: ros2 launch interceptor interceptor.launch.py
+    T3->>T3: ros2 launch interceptor interceptor.launch.py modo:=pn
     T3->>T3: arranca Micro XRCE-DDS Agent (udp4, puerto 8888)
-    T3->>T3: arranca conversores tf2, diagnóstico y modos de vuelo
+    T3->>T3: arranca conversores tf2, diagnóstico y el modo de vuelo elegido
     T1-->>T3: VehicleOdometry (instancia 0)
     T2-->>T3: VehicleOdometry (instancia 1)
 ```
@@ -102,14 +102,15 @@ binario de PX4 que compiló el paso anterior. Cada parte de la orden importa:
 ```bash
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-ros2 launch interceptor interceptor.launch.py
+ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
 
-El launch inicia el agente con `udp4` en el puerto `8888`, los conversores de
-odometría, los nodos de diagnóstico y los dos nodos de modo de vuelo. `udp4`
-significa comunicación UDP usando IPv4: una forma de enviar paquetes por la
-red sin mantener una conexión permanente; aquí se usa dentro del propio
-ordenador, para que el agente reciba los datos que le manda PX4.
+El argumento `modo` es obligatorio y solo acepta `pn` o `pursuit`. El launch
+inicia el agente con `udp4` en el puerto `8888`, los conversores de
+odometría, los nodos de diagnóstico y el único nodo de modo de vuelo elegido
+con `modo`. `udp4` significa comunicación UDP usando IPv4: una forma de enviar
+paquetes por la red sin mantener una conexión permanente; aquí se usa dentro
+del propio ordenador, para que el agente reciba los datos que le manda PX4.
 
 El launch no inicia PX4 SITL. Los dos comandos anteriores son obligatorios si
 se quiere probar con simulación.
@@ -139,32 +140,17 @@ que cambien.
 
 ## Probar el guiado
 
-### Poner a los dos drones en el mismo origen
+No hay que preparar nada más. Cada PX4 mide su posición desde el punto donde
+arrancó, así que el interceptor y el target usan orígenes distintos, pero
+`target_tf2_odometry` lo corrige solo: coloca al target en el mismo marco que
+el interceptor antes de publicarlo (ver
+[Arquitectura y flujo de datos](Architecture.md)). Puedes confirmarlo con:
 
-Cada PX4 mide su posición local desde el punto donde arrancó (su *origen*).
-Como el target arranca 20 m al norte, su origen está 20 m al norte del del
-interceptor, y los modos de guiado comparan posiciones medidas desde orígenes
-distintos: el target les parece estar donde está el interceptor y dan el
-objetivo por alcanzado sin moverse. Hasta que eso se corrija en el código, hay
-que darle al target el mismo origen que al interceptor.
-
-En la terminal 1 (la consola `pxh>` del interceptor), lee su origen:
-
-```text
-listener vehicle_local_position
+```bash
+ros2 run tf2_ros tf2_echo map target/base_link
 ```
 
-Apunta `ref_lat`, `ref_lon` y `ref_alt`. En la terminal 2 (la consola `pxh>`
-del target), aplica esos valores:
-
-```text
-commander set_ekf_origin <ref_lat> <ref_lon> <ref_alt>
-```
-
-Si responde `commander not running`, espera unos segundos y repítelo. Para
-comprobarlo, `ros2 run tf2_ros tf2_echo map target/base_link` debe situar al
-target a unos 20 m (`y` ≈ 20), no en `0`. Hay que repetir este paso cada vez
-que se arranquen las instancias.
+Con el target arrancado 20 m al norte, debe salir `y` ≈ 20, no `0`.
 
 ### Volar
 
@@ -181,8 +167,9 @@ El interceptor sale a por el target. El modo solo se deja seleccionar cuando
 recibe datos del target; si no, PX4 lo rechaza con
 `No target odometry received yet` (ver
 [Solución de problemas](Quick-reference-and-troubleshooting.md)). Al alcanzarlo
-(a menos de 1 m) el log muestra `Target reached. Stopping pursuit.`, pero el
-interceptor sigue en el modo: si el target se aleja, vuelve a perseguirlo.
+(a menos de 1 m) el log muestra `Target reached. Stopping pursuit.` una vez por
+cada acercamiento, pero el interceptor sigue en el modo: si el target se aleja,
+vuelve a perseguirlo y el aviso saldrá de nuevo en el siguiente alcance.
 Para terminar, cambia el interceptor a *Hold* o *Land*.
 
 ## Ejecutar un nodo individual
@@ -200,11 +187,22 @@ Para detener una prueba, detén primero el launch y después las instancias PX4.
 Si dejas procesos antiguos activos, la siguiente prueba puede recibir mensajes
 duplicados o fallar al abrir puertos.
 
+Al pulsar Ctrl-C, el launch tarda unos **5 segundos** en cerrarse. Es a
+propósito: el modo de vuelo necesita ese margen para darse de baja en PX4 antes
+de que se cierre el agente, que es quien lleva ese aviso. El agente ignora el
+primer Ctrl-C y se cierra cuando el launch insiste, cinco segundos después. Si
+se cerrara a la vez que el resto, PX4 se quedaría con un modo registrado que ya
+no existe, y al relanzar aparecerían avisos de modos sin respuesta.
+
 ## Nota sobre los modos
 
-El launch actual inicia tanto `pursuit_mode` como `PN_mode`. Ambos se registran
-como modos personalizados de PX4 mediante `px4_ros2_cpp`. Para entender sus
-diferencias y sus datos necesarios, consulta [Modos de guiado](Guidance-modes.md).
+El launch registra en PX4 **un solo** modo de guiado, el que elijas con
+`modo:=pn` o `modo:=pursuit`. Los dos se registran mediante `px4_ros2_cpp`,
+pero de uno en uno: si ambos intentan registrarse a la vez, PX4 puede quedarse
+con un registro duplicado que no responde y ese modo deja de poder activarse.
+Para probar el otro, detén el launch y vuelve a lanzarlo con el otro valor.
+Para entender sus diferencias y sus datos necesarios, consulta
+[Modos de guiado](Guidance-modes.md).
 
 ---
 

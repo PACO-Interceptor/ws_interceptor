@@ -37,13 +37,17 @@ succeeds on `main`.
 
 Run everything:
 ```bash
-ros2 launch interceptor interceptor.launch.py
+ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
-Or a single node: `ros2 run interceptor <executable>` (executable names = source file names, e.g.
+`modo` is a required launch argument, `pn` or `pursuit`: both mode nodes are in the
+`LaunchDescription`, each behind an `IfCondition`, so only the chosen one is started. Or a single
+node:
+`ros2 run interceptor <executable>` (executable names = source file names, e.g.
 `pursuit_mode`, `PN_mode`).
 
-The launch file starts the Micro XRCE-DDS Agent (expected at `~/Micro-XRCE-DDS-Agent`) plus the
-interceptor package's nodes. It does **not** start PX4 SITL itself — that's run manually from
+The launch file starts the Micro XRCE-DDS Agent (expected at `~/Micro-XRCE-DDS-Agent`), the
+interceptor package's odometry/diagnostic nodes, and the one guidance mode picked with `modo`. It
+does **not** start PX4 SITL itself — that's run manually from
 `~/PX4-Autopilot`, checked out at commit `14b3f44081` (the one the vendored `px4_msgs` matches;
 see `docs/wiki/Installation-and-build.md`):
 - drone 0 (interceptor): `make px4_sitl gz_x500`
@@ -64,7 +68,12 @@ before touching any node:
    ENU/base_link frame (`px4_ros_com::frame_transforms`), and broadcasts a tf2 transform
    `map -> {target,interceptor}/base_link`. The target's node additionally republishes its ENU
    linear velocity on `target/velocity` (`TwistStamped`, 10 Hz) since tf2 transforms carry no
-   velocity.
+   velocity. Because each PX4 instance measures its local position from its own startup origin,
+   `target_tf2_odometry` also subscribes to `vehicle_local_position` of both instances
+   (`ref_lat`/`ref_lon`/`ref_alt`) and adds the NED offset between the target's and the
+   interceptor's origin to the target's position before publishing, so `map` consistently means
+   "the interceptor's origin" for both vehicles; until both references are valid it withholds the
+   transform and logs a throttled warning instead.
 2. **`target_vehicle_odometry_subscriber`** / **`interceptor_vehicle_odometry_subscriber`** — plain
    debug listeners that dump raw `VehicleOdometry` fields to stdout; not part of the control loop.
 3. **`tf2_listener`** — standalone debug node, logs the `interceptor -> target` tf2 transform plus
@@ -78,7 +87,10 @@ before touching any node:
    - gate arming/running on `checkArmingAndRunConditions` until target data is valid,
    - compute a velocity/acceleration setpoint from the line-of-sight (LOS) vector each
      `updateSetpoint(dt_s)` tick, sent through a shared `TrajectorySetpointType`,
-   - call `completed(px4_ros2::Result::Success)` once LOS norm < 1 m.
+   - call `completed(px4_ros2::Result::Success)` once per approach, the first `updateSetpoint` tick
+     LOS norm drops below 1 m (an internal `_target_reached` flag, reset in `onActivate()` and
+     whenever LOS norm climbs back above 1 m, keeps this from re-firing every tick while it stays
+     under 1 m).
    `PursuitMode` does straight pure-pursuit (velocity toward target, capped horizontal/vertical
    speed). `PN_Mode` additionally subscribes to `target/velocity` (converting ENU->NED) to run true
    Proportional Navigation (LOS rotation rate × relative velocity, scaled by a navigation constant,

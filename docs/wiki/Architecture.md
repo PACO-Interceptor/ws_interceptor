@@ -78,8 +78,11 @@ Imaginemos que el target se mueve unos centímetros:
 
 1. PX4 actualiza su estimación y publica un `VehicleOdometry`.
 2. `target_tf2_odometry` recibe el mensaje en una callback.
-3. Convierte posición, velocidad y orientación de NED a ENU.
-4. Publica una nueva relación `map -> target/base_link`.
+3. Suma a esa posición el desplazamiento entre el origen del target y el del
+   interceptor (ver [Qué es `map` aquí](#qué-es-map-aquí-y-por-qué-hay-que-desplazar-al-target)),
+   y convierte posición, velocidad y orientación de NED a ENU.
+4. Publica una nueva relación `map -> target/base_link`. Si aún falta la
+   referencia global de alguno de los dos drones, no publica y avisa.
 5. Guarda la última velocidad y el timer publica `target/velocity`.
 6. Cada 50 ms, `pursuit_mode` o `PN_mode` consulta esa posición mediante tf2.
 7. El modo combina esa posición con su propia odometría (leída vía
@@ -151,6 +154,36 @@ En tf2, `map -> target/base_link` significa “dónde está el origen del frame 
 target expresado en map”; no significa que el target publique directamente una
 posición absoluta en todos los tópicos.
 
+### Qué es `map` aquí, y por qué hay que desplazar al target
+
+Cada PX4 mide su posición local desde **su propio origen**: el punto donde
+arrancó, que su estimador (el EKF) guarda como una coordenada geográfica
+(`ref_lat`, `ref_lon`, `ref_alt` del mensaje `VehicleLocalPosition`). Los dos
+drones arrancan en sitios distintos, así que cada uno cuenta desde un punto
+distinto, aunque ambos digan "estoy en (0, 0)" al empezar.
+
+En este proyecto, `map` es el origen **del interceptor**:
+`interceptor_tf2_odometry` publica su posición local tal cual. Si
+`target_tf2_odometry` hiciera lo mismo con la del target, estaría mezclando dos
+sistemas: con el target arrancado 20 m al norte, tf2 lo situaría igualmente en
+(0, 0) y los modos de guiado creerían tenerlo encima nada más empezar.
+
+Por eso `target_tf2_odometry` se suscribe también a `vehicle_local_position` de
+las **dos** instancias, calcula el desplazamiento entre los dos orígenes a
+partir de sus coordenadas geográficas y se lo suma a la posición del target
+antes de publicar el transform. El cálculo se rehace con cada mensaje de
+odometría, así que si un EKF reinicia su origen en pleno vuelo, la corrección se
+ajusta sola.
+
+Mientras alguna de las dos referencias no sea válida —por ejemplo, justo al
+arrancar, antes de que el EKF tenga posición global— el nodo **no publica** el
+transform y avisa en el log (como mucho una vez cada 5 segundos). Es preferible
+no publicar nada a publicar una posición que mezcla orígenes: sin transform, los
+modos de guiado ni siquiera dejan armar.
+
+La velocidad no necesita esa corrección: los ejes NED de los dos orígenes
+apuntan en la misma dirección, así que solo cambia la posición.
+
 ## Por qué existe `target/velocity`
 
 Un transform tf2 contiene posición y orientación, pero no la velocidad. Por eso
@@ -173,6 +206,7 @@ En este proyecto no se usa la velocidad angular.
 | PX4 target | No aparece el frame del target. |
 | Agente DDS | ROS 2 no recibe los tópicos de PX4. |
 | `target_tf2_odometry` | Falta `target/base_link` y `target/velocity`. |
+| Referencia global de algún dron | No aparece `target/base_link` y el log avisa de que falta la referencia; los modos no dejan armar. |
 | `interceptor_tf2_odometry` | Falta el frame del interceptor para diagnóstico. |
 | `target/velocity` | PN no supera su comprobación de armado. |
 | Modo PX4 | Hay datos, pero no se generan setpoints de guiado. |

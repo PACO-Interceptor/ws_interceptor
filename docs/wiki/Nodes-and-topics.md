@@ -10,7 +10,7 @@ código.
 | Ejecutable | Responsabilidad |
 | --- | --- |
 | `interceptor_tf2_odometry` | Convierte la odometría de la instancia 0 y publica el frame del interceptor. |
-| `target_tf2_odometry` | Convierte la odometría de la instancia 1, publica el frame del target y `target/velocity`. |
+| `target_tf2_odometry` | Convierte la odometría de la instancia 1, la desplaza al origen del interceptor (usando `vehicle_local_position` de las dos instancias) y publica el frame del target y `target/velocity`. |
 | `pursuit_mode` | Modo de persecución pura basado en la posición. |
 | `PN_mode` | Modo de navegación proporcional basado en posición y velocidad. |
 
@@ -40,15 +40,19 @@ del cálculo de control. `tf2_listener` está comentado en el launch por defecto
 flowchart LR
     subgraph PX0["PX4 interceptor (instancia 0)"]
         O0["/fmu/out/vehicle_odometry"]
+        L0["/fmu/out/vehicle_local_position"]
     end
     subgraph PX1["PX4 target (instancia 1)"]
         O1["/px4_1/fmu/out/vehicle_odometry"]
+        L1["/px4_1/fmu/out/vehicle_local_position"]
     end
 
     O0 --> ITF[interceptor_tf2_odometry]
     O0 -->|"⚠️ nombre invertido"| TVS["target_vehicle_odometry_subscriber<br/>(diagnóstico)"]
 
     O1 --> TTF[target_tf2_odometry]
+    L0 --> TTF
+    L1 --> TTF
     O1 -->|"⚠️ nombre invertido"| IVS["interceptor_vehicle_odometry_subscriber<br/>(diagnóstico)"]
 
     ITF --> TFI[("map -> interceptor/base_link")]
@@ -75,7 +79,7 @@ diagrama.
 
 | Nodo | Entrada | Salida |
 | --- | --- | --- |
-| `target_tf2_odometry` | `/px4_1/fmu/out/vehicle_odometry` | `map -> target/base_link`, `target/velocity` |
+| `target_tf2_odometry` | `/px4_1/fmu/out/vehicle_odometry`, `/fmu/out/vehicle_local_position`, `/px4_1/fmu/out/vehicle_local_position` | `map -> target/base_link`, `target/velocity` |
 | `interceptor_tf2_odometry` | `/fmu/out/vehicle_odometry` | `map -> interceptor/base_link` |
 | `pursuit_mode` | tf2 target, odometría propia | setpoint de trayectoria |
 | `PN_mode` | tf2 target, odometría propia, `target/velocity` | setpoint de trayectoria |

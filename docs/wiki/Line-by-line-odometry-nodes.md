@@ -179,95 +179,151 @@ equivalente en el conversor del interceptor.
 
 | Línea | Código | Explicación |
 | ---: | --- | --- |
-| 1-9 | Comentario Doxygen `/** ... */` | Documenta archivo, propósito y, a diferencia del otro conversor, menciona explícitamente que también publica la velocidad del target. |
-| 11 | `#include <memory>` | Igual que en el conversor del interceptor. |
-| 12 | `#include <sstream>` | Igual. |
-| 13 | `#include <string>` | Igual. |
-| 15 | `#include <rclcpp/rclcpp.hpp>` | Igual. |
-| 16 | `#include <geometry_msgs/msg/transform_stamped.hpp>` | Igual. |
-| 17 | `#include <px4_msgs/msg/vehicle_odometry.hpp>` | Igual. |
-| 18 | `#include <px4_ros_com/frame_transforms.h>` | Igual. |
-| 19 | `#include <tf2_ros/transform_broadcaster.h>` | Igual. |
-| 20 | ★ `#include <geometry_msgs/msg/twist_stamped.hpp>` | Extra: trae `TwistStamped`, el tipo del mensaje `target/velocity`. |
-| 22-25 | Comentario Doxygen de la clase | Igual que en el otro archivo. |
-| 26 | `class FramePublisher : public rclcpp::Node` | Misma declaración de clase (mismo nombre de clase, archivo distinto). |
-| 27 | `{` | Abre el cuerpo. |
-| 28 | `public:` | Igual. |
-| 29 | `explicit FramePublisher()` | Igual. |
-| 30 | `: Node("target_tf2_frame_publisher")` | Nombre de nodo distinto. |
-| 31 | `{` | Abre el constructor. |
-| 32 | `vehicle_name_ = this->declare_parameter<std::string>("vehicle_name", "target");` | Mismo parámetro, valor por defecto `"target"`. |
-| 34 | `tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);` | Igual que en el otro archivo. |
-| 36 | `rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;` | Igual. |
-| 37 | `auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);` | Igual. |
-| 39 | `std::ostringstream stream;` | Igual. |
-| 40 | `stream << "/px4_1/fmu/out/vehicle_odometry";` | **Tópico distinto**: instancia 1, la del target. |
-| 41 | `std::string topic_name = stream.str();` | Igual. |
-| 44 | ★ `velocity_pub_ =` | Empieza a asignar el resultado de crear el publisher al atributo `velocity_pub_`. |
-| 45 | ★ `this->create_publisher<geometry_msgs::msg::TwistStamped>("target/velocity", 10);` | Crea el publisher de velocidad en el tópico `target/velocity`, con cola de 10 mensajes. |
-| 46 | ★ `auto timer_callback =` | Empieza a definir la función que ejecutará el timer. |
-| 47 | ★ `[this]()->void {` | Lambda sin parámetros que devuelve `void`. |
-| 48 | ★ `geometry_msgs::msg::TwistStamped msg;` | Crea el mensaje de velocidad a publicar. |
-| 49 | ★ `msg.header.stamp = this->get_clock()->now();` | Marca de tiempo actual. |
-| 50 | ★ `msg.header.frame_id = vehicle_name_ + "/base_link";` | Frame en el que se interpreta la velocidad. |
-| 51 | ★ `msg.twist.linear.x = _target_velocity_enu.x();` | Copia la componente X guardada de la última velocidad ENU. |
-| 52 | ★ `msg.twist.linear.y = _target_velocity_enu.y();` | Componente Y. |
-| 53 | ★ `msg.twist.linear.z = _target_velocity_enu.z();` | Componente Z. |
-| 54 | ★ `velocity_pub_->publish(msg);` | Publica el mensaje en `target/velocity`. |
-| 55 | ★ `};` | Cierra la lambda `timer_callback`. |
-| 56 | ★ `timer_ = this->create_wall_timer(std::chrono::milliseconds(100), timer_callback);` | Crea un timer que ejecuta `timer_callback` cada 100 ms (10 Hz), independientemente de cuándo lleguen mensajes de PX4. |
-| 58 | `subscription_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(topic_name, qos,` | Igual patrón que en el otro conversor, pero con el `topic_name` de la instancia 1. |
-| 59 | `[this](const px4_msgs::msg::VehicleOdometry::UniquePtr msg) {` | Igual. |
-| 60 | `using px4_ros_com::frame_transforms::ned_to_enu_local_frame;` | Igual. |
-| 61 | `using px4_ros_com::frame_transforms::px4_to_ros_orientation;` | Igual. |
-| 63 | `// PX4 position is NED, ROS/tf2 expects ENU` | Igual. |
-| 64 | `Eigen::Vector3d position_ned(msg->position[0], msg->position[1], msg->position[2]);` | Igual. |
-| 65 | `Eigen::Vector3d position_enu = ned_to_enu_local_frame(position_ned);` | Igual. |
-| 67 | ★ `// PX4 velocity is NED, ROS/tf2 expects ENU` | Comentario nuevo: aquí sí se convierte también la velocidad. |
-| 68 | ★ `Eigen::Vector3d velocity_ned(msg->velocity[0], msg->velocity[1], msg->velocity[2]);` | Arma un vector 3D `double` con la velocidad NED del mensaje. |
-| 69 | ★ `Eigen::Vector3d velocity_enu = ned_to_enu_local_frame(velocity_ned);` | Convierte esa velocidad a ENU (reutiliza la misma función que la posición). |
-| 71 | `// PX4 quaternion is (w, x, y, z), aircraft frame relative to NED` | Igual. |
-| 72 | `Eigen::Quaterniond q_ned(msg->q[0], msg->q[1], msg->q[2], msg->q[3]);` | Igual. |
-| 73 | `Eigen::Quaterniond q_enu = px4_to_ros_orientation(q_ned);` | Igual. |
-| 75 | `geometry_msgs::msg::TransformStamped t;` | Igual. |
-| 76 | `t.header.stamp = this->get_clock()->now();` | Igual. |
-| 77 | `t.header.frame_id = "map";` | Igual. |
-| 78 | `t.child_frame_id = vehicle_name_ + "/base_link";` | Aquí resuelve a `target/base_link`. |
-| 80 | ★ `// Vector3d not Vector3f, so use cast. TF2 only has translation and rotation` | Explica por qué hace falta el `.cast<float>()` de la línea siguiente. |
-| 81 | ★ `_target_velocity_enu = velocity_enu.cast<float>();` | Guarda la velocidad ENU como `float` (convertida desde `double`) en el atributo que leerá el timer. |
-| 83 | `t.transform.translation.x = position_enu.x();` | Igual que en el otro conversor. |
-| 84 | `t.transform.translation.y = position_enu.y();` | Igual. |
-| 85 | `t.transform.translation.z = position_enu.z();` | Igual. |
-| 87 | `t.transform.rotation.w = q_enu.w();` | Igual. |
-| 88 | `t.transform.rotation.x = q_enu.x();` | Igual. |
-| 89 | `t.transform.rotation.y = q_enu.y();` | Igual. |
-| 90 | `t.transform.rotation.z = q_enu.z();` | Igual. |
-| 92 | `tf_broadcaster_->sendTransform(t);` | Publica `map -> target/base_link`. |
-| 93 | `});` | Cierra la lambda y `create_subscription`. |
-| 95 | `}` | Cierra el constructor. |
-| 97 | `private:` | Igual. |
-| 98 | `rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr subscription_;` | Igual. |
-| 99 | `std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;` | Igual. |
-| 100 | ★ `rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_pub_;` | Guarda el publisher de velocidad. |
-| 101 | ★ `Eigen::Vector3f _target_velocity_enu{Eigen::Vector3f::Zero()};` | Guarda la última velocidad ENU conocida, inicializada a cero para que el timer no lea basura antes del primer mensaje PX4. |
-| 102 | ★ `rclcpp::TimerBase::SharedPtr timer_;` | Guarda el timer de 100 ms. |
-| 103 | `std::string vehicle_name_;` | Igual. |
-| 104 | `};` | Cierra la clase. |
-| 106 | `int main(int argc, char *argv[])` | Igual estructura que el otro conversor. |
-| 107 | `{` | Abre `main`. |
-| 108 | `std::cout << "Starting interceptor_tf2_odometry frame publisher..." << std::endl;` | El texto dice "interceptor" aunque este binario es `target_tf2_odometry`: es un mensaje de arranque copiado sin actualizar, otro detalle de nombres a tener en cuenta. |
-| 109 | `setvbuf(stdout, NULL, _IONBF, BUFSIZ);` | Igual. |
-| 110 | `rclcpp::init(argc, argv);` | Igual. |
-| 111 | `rclcpp::spin(std::make_shared<FramePublisher>());` | Igual. |
-| 113 | `rclcpp::shutdown();` | Igual. |
-| 114 | `return 0;` | Igual. |
-| 115 | `}` | Cierra `main`. |
+| 1-13 | Comentario Doxygen `/** ... */` | Documenta archivo y propósito; menciona que también publica la velocidad del target y explica (líneas 9-12) que la posición del target se desplaza por el offset NED entre el origen del target y el del interceptor, para que ambos queden expresados en el mismo origen. |
+| 15 | `#include <memory>` | Igual que en el conversor del interceptor. |
+| 16 | `#include <sstream>` | Igual. |
+| 17 | `#include <string>` | Igual. |
+| 19 | `#include <rclcpp/rclcpp.hpp>` | Igual. |
+| 20 | `#include <geometry_msgs/msg/transform_stamped.hpp>` | Igual. |
+| 21 | `#include <px4_msgs/msg/vehicle_odometry.hpp>` | Igual. |
+| 22 | ★ `#include <px4_msgs/msg/vehicle_local_position.hpp>` | Nuevo: trae `VehicleLocalPosition`, el mensaje con `ref_lat`/`ref_lon`/`ref_alt`. |
+| 23 | `#include <px4_ros_com/frame_transforms.h>` | Igual. |
+| 24 | ★ `#include <px4_ros2/utils/geodesic.hpp>` | Nuevo: trae `px4_ros2::vectorToGlobalPosition`, usada para calcular el desplazamiento NED entre orígenes. |
+| 25 | ★ `#include <px4_ros2/utils/message_version.hpp>` | Nuevo: trae `getMessageNameVersion`, para componer el sufijo de versión del tópico de posición local. |
+| 26 | `#include <tf2_ros/transform_broadcaster.h>` | Igual. |
+| 27 | ★ `#include <geometry_msgs/msg/twist_stamped.hpp>` | Extra: trae `TwistStamped`, el tipo del mensaje `target/velocity`. |
+| 29-32 | Comentario Doxygen de la clase | Igual que en el otro archivo. |
+| 33 | `class FramePublisher : public rclcpp::Node` | Misma declaración de clase (mismo nombre de clase, archivo distinto). |
+| 34 | `{` | Abre el cuerpo. |
+| 35 | `public:` | Igual. |
+| 36 | `explicit FramePublisher()` | Igual. |
+| 37 | `: Node("target_tf2_frame_publisher")` | Nombre de nodo distinto. |
+| 38 | `{` | Abre el constructor. |
+| 39 | `vehicle_name_ = this->declare_parameter<std::string>("vehicle_name", "target");` | Mismo parámetro, valor por defecto `"target"`. |
+| 41 | `tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);` | Igual que en el otro archivo. |
+| 43 | `rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;` | Igual. |
+| 44 | `auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);` | Igual. |
+| 46 | ★ `const std::string local_position_version_suffix =` | Nuevo: empieza a guardar el sufijo de versión del mensaje `VehicleLocalPosition`. |
+| 47 | ★ `px4_ros2::getMessageNameVersion<px4_msgs::msg::VehicleLocalPosition>();` | Nuevo: calcula ese sufijo (algo como `_v1` con el `px4_msgs` vendorizado) a partir del tipo del mensaje. |
+| 49 | ★ `local_position_sub_interceptor_ =` | Nuevo: empieza a crear la suscripción a la posición local del interceptor. |
+| 50 | ★ `this->create_subscription<px4_msgs::msg::VehicleLocalPosition>(` | Nuevo: tipo del mensaje a suscribir. |
+| 51 | ★ `"/fmu/out/vehicle_local_position" + local_position_version_suffix, qos,` | Nuevo: tópico de la instancia 0 (interceptor), con el mismo QoS que la odometría. |
+| 52 | ★ `[this](const px4_msgs::msg::VehicleLocalPosition::UniquePtr msg) {` | Nuevo: lambda de la callback. |
+| 53 | ★ `ref_lat_interceptor_ = msg->ref_lat;` | Nuevo: guarda la latitud de referencia del origen del interceptor. |
+| 54 | ★ `ref_lon_interceptor_ = msg->ref_lon;` | Nuevo: longitud de referencia. |
+| 55 | ★ `ref_alt_interceptor_ = msg->ref_alt;` | Nuevo: altitud de referencia. |
+| 56 | ★ `ref_valid_interceptor_ = msg->xy_global && msg->z_global;` | Nuevo: la referencia solo se da por válida si el EKF ya tiene origen global horizontal y vertical. |
+| 57 | ★ `});` | Nuevo: cierra la lambda y `create_subscription`. |
+| 59 | ★ `local_position_sub_target_ =` | Nuevo: empieza a crear la suscripción a la posición local del target. |
+| 60 | ★ `this->create_subscription<px4_msgs::msg::VehicleLocalPosition>(` | Nuevo. |
+| 61 | ★ `"/px4_1/fmu/out/vehicle_local_position" + local_position_version_suffix, qos,` | Nuevo: tópico de la instancia 1 (target). |
+| 62 | ★ `[this](const px4_msgs::msg::VehicleLocalPosition::UniquePtr msg) {` | Nuevo. |
+| 63 | ★ `ref_lat_target_ = msg->ref_lat;` | Nuevo. |
+| 64 | ★ `ref_lon_target_ = msg->ref_lon;` | Nuevo. |
+| 65 | ★ `ref_alt_target_ = msg->ref_alt;` | Nuevo. |
+| 66 | ★ `ref_valid_target_ = msg->xy_global && msg->z_global;` | Nuevo. |
+| 67 | ★ `});` | Nuevo: cierra la lambda y `create_subscription`. |
+| 69 | `std::ostringstream stream;` | Igual. |
+| 70 | `stream << "/px4_1/fmu/out/vehicle_odometry";` | **Tópico distinto**: instancia 1, la del target. |
+| 71 | `std::string topic_name = stream.str();` | Igual. |
+| 74 | ★ `velocity_pub_ =` | Empieza a asignar el resultado de crear el publisher al atributo `velocity_pub_`. |
+| 75 | ★ `this->create_publisher<geometry_msgs::msg::TwistStamped>("target/velocity", 10);` | Crea el publisher de velocidad en el tópico `target/velocity`, con cola de 10 mensajes. |
+| 76 | ★ `auto timer_callback =` | Empieza a definir la función que ejecutará el timer. |
+| 77 | ★ `[this]()->void {` | Lambda sin parámetros que devuelve `void`. |
+| 78 | ★ `geometry_msgs::msg::TwistStamped msg;` | Crea el mensaje de velocidad a publicar. |
+| 79 | ★ `msg.header.stamp = this->get_clock()->now();` | Marca de tiempo actual. |
+| 80 | ★ `msg.header.frame_id = vehicle_name_ + "/base_link";` | Frame en el que se interpreta la velocidad. |
+| 81 | ★ `msg.twist.linear.x = _target_velocity_enu.x();` | Copia la componente X guardada de la última velocidad ENU. |
+| 82 | ★ `msg.twist.linear.y = _target_velocity_enu.y();` | Componente Y. |
+| 83 | ★ `msg.twist.linear.z = _target_velocity_enu.z();` | Componente Z. |
+| 84 | ★ `velocity_pub_->publish(msg);` | Publica el mensaje en `target/velocity`. |
+| 85 | ★ `};` | Cierra la lambda `timer_callback`. |
+| 86 | ★ `timer_ = this->create_wall_timer(std::chrono::milliseconds(100), timer_callback);` | Crea un timer que ejecuta `timer_callback` cada 100 ms (10 Hz), independientemente de cuándo lleguen mensajes de PX4. |
+| 88 | `subscription_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(topic_name, qos,` | Igual patrón que en el otro conversor, pero con el `topic_name` de la instancia 1. |
+| 89 | `[this](const px4_msgs::msg::VehicleOdometry::UniquePtr msg) {` | Igual. |
+| 90 | `using px4_ros_com::frame_transforms::ned_to_enu_local_frame;` | Igual. |
+| 91 | `using px4_ros_com::frame_transforms::px4_to_ros_orientation;` | Igual. |
+| 93 | ★ `// PX4 velocity is NED, ROS/tf2 expects ENU` | Comentario: aquí también se convierte la velocidad (no existe en el conversor del interceptor). |
+| 94 | ★ `Eigen::Vector3d velocity_ned(msg->velocity[0], msg->velocity[1], msg->velocity[2]);` | Arma un vector 3D `double` con la velocidad NED del mensaje. |
+| 95 | ★ `Eigen::Vector3d velocity_enu = ned_to_enu_local_frame(velocity_ned);` | Convierte esa velocidad a ENU (reutiliza la misma función que la posición). |
+| 97 | ★ `// Vector3d not Vector3f, so use cast. TF2 only has translation and rotation` | Explica por qué hace falta el `.cast<float>()` de la línea siguiente. |
+| 98 | ★ `_target_velocity_enu = velocity_enu.cast<float>();` | Guarda la velocidad ENU como `float` (convertida desde `double`) en el atributo que leerá el timer; se hace antes de mirar si hay que publicar, así el timer siempre tiene el último valor aunque el transform no se publique todavía. |
+| 100 | ★ `if (!ref_valid_interceptor_ || !ref_valid_target_) {` | Nuevo: si falta la referencia global de alguno de los dos vehículos, el offset entre orígenes no se puede calcular todavía. |
+| 101 | ★ `// Missing global reference of interceptor and/or target: the NED offset` | Comentario que explica el porqué del `return`. |
+| 102 | ★ `// between origins can't be computed yet, so don't publish a wrong transform` | Continúa el comentario. |
+| 103 | ★ `RCLCPP_WARN_THROTTLE(` | Nuevo: avisa por log, limitado en frecuencia. |
+| 104 | ★ `this->get_logger(), *this->get_clock(), 5000,` | Como mucho un aviso cada 5000 ms. |
+| 105 | ★ `"Waiting for global reference (ref_lat/ref_lon/ref_alt) of%s%s before publishing "` | Primera parte del texto del aviso. |
+| 106 | ★ `"map -> %s/base_link",` | Segunda parte del texto del aviso. |
+| 107 | ★ `!ref_valid_interceptor_ ? " interceptor" : "",` | Inserta `" interceptor"` en el aviso si falta esa referencia. |
+| 108 | ★ `!ref_valid_target_ ? " target" : "",` | Inserta `" target"` en el aviso si falta esa. |
+| 109 | ★ `vehicle_name_.c_str());` | Nombre del vehículo (`target`) que aparece al final del aviso. |
+| 110 | ★ `return;` | No publica `map -> target/base_link` mientras falte alguna referencia global. |
+| 111 | ★ `}` | Cierra el bloque `if`. |
+| 113 | `// PX4 position is NED, ROS/tf2 expects ENU` | Igual que en el otro conversor. |
+| 114 | `Eigen::Vector3d position_ned(msg->position[0], msg->position[1], msg->position[2]);` | Igual. |
+| 116 | ★ `// NED offset of the target's origin with respect to the interceptor's,` | Nuevo comentario. |
+| 117 | ★ `// so both vehicles end up expressed in the same origin (map = interceptor's)` | Continúa el comentario. |
+| 118 | ★ `Eigen::Vector3d global_position_interceptor(` | Nuevo: arma el vector lat/lon/alt de referencia del interceptor. |
+| 119 | ★ `ref_lat_interceptor_, ref_lon_interceptor_, ref_alt_interceptor_);` | Continúa la construcción del vector. |
+| 120 | ★ `Eigen::Vector3d global_position_target(` | Nuevo: arma el vector lat/lon/alt de referencia del target. |
+| 121 | ★ `ref_lat_target_, ref_lon_target_, ref_alt_target_);` | Continúa la construcción del vector. |
+| 122 | ★ `Eigen::Vector3f origin_offset_ned = px4_ros2::vectorToGlobalPosition(` | Nuevo: calcula el desplazamiento NED del origen del target respecto al del interceptor. |
+| 123 | ★ `global_position_interceptor, global_position_target);` | Argumentos: posición global "ahora" (interceptor) y "siguiente" (target). |
+| 124 | ★ `position_ned += origin_offset_ned.cast<double>();` | Nuevo: suma ese desplazamiento a la posición NED del target, antes de convertirla a ENU. |
+| 126 | `Eigen::Vector3d position_enu = ned_to_enu_local_frame(position_ned);` | Igual que en el otro conversor, pero ahora con la posición ya desplazada al origen del interceptor. |
+| 128 | `// PX4 quaternion is (w, x, y, z), aircraft frame relative to NED` | Igual. |
+| 129 | `Eigen::Quaterniond q_ned(msg->q[0], msg->q[1], msg->q[2], msg->q[3]);` | Igual. |
+| 130 | `Eigen::Quaterniond q_enu = px4_to_ros_orientation(q_ned);` | Igual. |
+| 132 | `geometry_msgs::msg::TransformStamped t;` | Igual. |
+| 133 | `t.header.stamp = this->get_clock()->now();` | Igual. |
+| 134 | `t.header.frame_id = "map";` | Igual. |
+| 135 | `t.child_frame_id = vehicle_name_ + "/base_link";` | Aquí resuelve a `target/base_link`. |
+| 137 | `t.transform.translation.x = position_enu.x();` | Igual que en el otro conversor. |
+| 138 | `t.transform.translation.y = position_enu.y();` | Igual. |
+| 139 | `t.transform.translation.z = position_enu.z();` | Igual. |
+| 141 | `t.transform.rotation.w = q_enu.w();` | Igual. |
+| 142 | `t.transform.rotation.x = q_enu.x();` | Igual. |
+| 143 | `t.transform.rotation.y = q_enu.y();` | Igual. |
+| 144 | `t.transform.rotation.z = q_enu.z();` | Igual. |
+| 146 | `tf_broadcaster_->sendTransform(t);` | Publica `map -> target/base_link`, ya con la posición del target expresada en el origen del interceptor. |
+| 147 | `});` | Cierra la lambda y `create_subscription`. |
+| 149 | `}` | Cierra el constructor. |
+| 151 | `private:` | Igual. |
+| 152 | `rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr subscription_;` | Igual. |
+| 153-154 | ★ `rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr` / `local_position_sub_interceptor_;` | Nuevo: guarda la suscripción a la posición local del interceptor. |
+| 155 | ★ `rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr local_position_sub_target_;` | Nuevo: guarda la suscripción a la posición local del target. |
+| 156 | `std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;` | Igual. |
+| 157 | ★ `rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_pub_;` | Guarda el publisher de velocidad. |
+| 158 | ★ `Eigen::Vector3f _target_velocity_enu{Eigen::Vector3f::Zero()};` | Guarda la última velocidad ENU conocida, inicializada a cero para que el timer no lea basura antes del primer mensaje PX4. |
+| 159 | ★ `rclcpp::TimerBase::SharedPtr timer_;` | Guarda el timer de 100 ms. |
+| 160 | `std::string vehicle_name_;` | Igual. |
+| 161 | ★ `double ref_lat_interceptor_{0.0};` | Nuevo: última latitud de referencia del interceptor recibida. |
+| 162 | ★ `double ref_lon_interceptor_{0.0};` | Nuevo: longitud de referencia del interceptor. |
+| 163 | ★ `float ref_alt_interceptor_{0.0F};` | Nuevo: altitud de referencia del interceptor. |
+| 164 | ★ `bool ref_valid_interceptor_{false};` | Nuevo: si esa referencia ya es válida. |
+| 165 | ★ `double ref_lat_target_{0.0};` | Nuevo: lo mismo para el target. |
+| 166 | ★ `double ref_lon_target_{0.0};` | Nuevo. |
+| 167 | ★ `float ref_alt_target_{0.0F};` | Nuevo. |
+| 168 | ★ `bool ref_valid_target_{false};` | Nuevo. |
+| 169 | `};` | Cierra la clase. |
+| 171 | `int main(int argc, char *argv[])` | Igual estructura que el otro conversor. |
+| 172 | `{` | Abre `main`. |
+| 173 | `std::cout << "Starting target_tf2_odometry frame publisher..." << std::endl;` | Mensaje de arranque, ahora coincide con el nombre del binario (`target_tf2_odometry`). |
+| 174 | `setvbuf(stdout, NULL, _IONBF, BUFSIZ);` | Igual. |
+| 175 | `rclcpp::init(argc, argv);` | Igual. |
+| 176 | `rclcpp::spin(std::make_shared<FramePublisher>());` | Igual. |
+| 178 | `rclcpp::shutdown();` | Igual. |
+| 179 | `return 0;` | Igual. |
+| 180 | `}` | Cierra `main`. |
 
-La callback de odometría (líneas 58-93) hace dos cosas con una sola entrada:
-publica el transform inmediatamente (línea 92) y guarda la velocidad para que
-el timer, en un ritmo distinto (100 ms fijos), la publique por separado
-(líneas 46-56). Por eso hay dos "relojes" distintos funcionando en este mismo
-archivo.
+La callback de odometría (líneas 88-147) hace tres cosas con una sola entrada:
+guarda la velocidad para que el timer, en un ritmo distinto (100 ms fijos), la
+publique por separado (líneas 76-86); si falta la referencia global de
+interceptor o target, avisa y sale sin publicar (líneas 100-111); y si ambas
+referencias ya son válidas, desplaza la posición del target al origen del
+interceptor antes de publicar el transform (líneas 116-146). Por eso hay dos
+"relojes" distintos funcionando en este mismo archivo.
 
 ## 4. `tf2_listener.cpp`
 
@@ -313,7 +369,7 @@ Archivo: [`tf2_listener.cpp`](../../src/interceptor/src/tf2_listener.cpp)
 | 47 | `private:` | Lo siguiente solo es accesible dentro de la clase. |
 | 48 | `void on_timer()` | Declara el método que se ejecuta cada segundo. |
 | 49 | `{` | Abre el cuerpo del método. |
-| 50-51 | `// Store frame names in variables that will be used to compute transformations` | Comentario explicativo. |
+| 50-51 | `// Store frame names in variables that will be used to` + `// compute transformations` | Comentario explicativo, partido en dos líneas. |
 | 52 | `std::string fromFrameRel = target_frame_.c_str();` | Frame de origen de la consulta: el del target. |
 | 53 | `std::string toFrameRel = "interceptor/base_link";` | Frame de destino: el del interceptor (fijo, no parametrizable). |
 | 55 | `geometry_msgs::msg::TransformStamped t;` | Variable donde se guardará el resultado de la consulta. |

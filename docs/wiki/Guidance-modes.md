@@ -43,7 +43,7 @@ Cada modo:
 3. Busca `map -> target/base_link` cada 50 ms.
 4. Rechaza el armado si aún no hay datos válidos del target.
 5. Calcula un setpoint durante `updateSetpoint`.
-6. Llama a `completed(Success)` cuando la distancia es menor que 1 m.
+6. Llama a `completed(Success)` la primera vez que la distancia baja de 1 m.
 
 Si tf2 todavía no conoce el target, el modo muestra un aviso y no genera un
 setpoint válido.
@@ -52,6 +52,13 @@ setpoint válido.
 biblioteca `px4_ros2` que este modo ha terminado su tarea con éxito. Qué pasa
 después (aterrizar, mantenerse en el sitio, cambiar de modo...) lo decide PX4
 o quien esté volando, no este código.
+
+Como el modo sigue activo, `updateSetpoint` se sigue ejecutando cada ciclo
+mientras el interceptor esté a menos de 1 m. Un indicador interno
+(`_target_reached`) hace que el aviso y `completed()` salgan **una sola vez por
+acercamiento**: se reinicia cuando el interceptor vuelve a alejarse más de 1 m
+—y entonces reanuda la persecución— y también al activar el modo. Sin ese
+indicador, el log recibía decenas de líneas por segundo.
 
 ## Qué es un setpoint
 
@@ -89,7 +96,7 @@ horizontal y se conserva el último yaw válido.
 %%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
 flowchart LR
     A["los = posición_target - posición_propia"] --> B{"¿norm(los) < 1 m?"}
-    B -->|sí| C["completed(Success)"]
+    B -->|sí| C["si es el primer ciclo dentro de 1 m:<br/>aviso + completed(Success)"]
     B -->|no| D["los_horizontal = los sin el eje vertical"]
     D --> E{"¿norm(los_horizontal) > 0.1 m?"}
     E -->|sí| F["velocidad_horizontal =<br/>normalizar(los_horizontal) × 5 m/s<br/>yaw = atan2(los_horizontal)"]
@@ -136,7 +143,7 @@ flowchart TD
     LOS["los = posición_target - posición_propia"]
     VREL["v_rel = velocidad_target - velocidad_propia"]
     LOS --> NORM{"¿norm(los) < 1 m?"}
-    NORM -->|sí| DONE["completed(Success)"]
+    NORM -->|sí| DONE["si es el primer ciclo dentro de 1 m:<br/>aviso + completed(Success)"]
     NORM -->|no| RANGE{"¿norm(los) < kPnMinRange (7 m)?"}
     RANGE -->|sí| ZERO["a_cmd = 0<br/>(solo se envía la persecución)"]
     RANGE -->|no| OMEGA["ω = (los × v_rel) / (norm²(los) + 1e-6)<br/>giro de la línea de visión"]

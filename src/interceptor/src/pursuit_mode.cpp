@@ -33,6 +33,8 @@ public:
     _target_lookup_timer = node.create_wall_timer(50ms, [this] {updateTargetPosition();});
   }
 
+  void onActivate() override {_target_reached = false;}
+
   void checkArmingAndRunConditions(px4_ros2::HealthAndArmingCheckReporter & reporter) override
   {
     if (!_target_valid) {
@@ -55,10 +57,14 @@ public:
     const Eigen::Vector3f los = _target_position_ned - _own_position->positionNed();
 
     if (los.norm() < 1.0f) {
-      RCLCPP_INFO(node().get_logger(), "Target reached. Stopping pursuit.");
-      completed(px4_ros2::Result::Success);
+      if (!_target_reached) {
+        RCLCPP_INFO(node().get_logger(), "Target reached. Stopping pursuit.");
+        completed(px4_ros2::Result::Success);
+        _target_reached = true;
+      }
       return;
     }
+    _target_reached = false;
 
     const Eigen::Vector2f los_horizontal(los.x(), los.y());
     Eigen::Vector2f velocity_horizontal = Eigen::Vector2f::Zero();
@@ -111,6 +117,7 @@ private:
 
   Eigen::Vector3f _target_position_ned{Eigen::Vector3f::Zero()};
   bool _target_valid{false};
+  bool _target_reached{false};
   float _last_yaw{0.f};
 };
 

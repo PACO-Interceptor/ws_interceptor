@@ -63,6 +63,8 @@ public:
 
   }
 
+  void onActivate() override {_target_reached = false;}
+
   // Safety checks
   void checkArmingAndRunConditions(px4_ros2::HealthAndArmingCheckReporter & reporter) override
   {
@@ -88,10 +90,14 @@ public:
     const Eigen::Vector3f v_rel = _target_velocity_ned - _own_position->velocityNed();
 
     if (los.norm() < 1.0f) {
-      RCLCPP_INFO(node().get_logger(), "Target reached. Stopping pursuit.");
-      completed(px4_ros2::Result::Success);
+      if (!_target_reached) {
+        RCLCPP_INFO(node().get_logger(), "Target reached. Stopping pursuit.");
+        completed(px4_ros2::Result::Success);
+        _target_reached = true;
+      }
       return;
     }
+    _target_reached = false;
 
     Eigen::Vector3f a_cmd = Eigen::Vector3f::Zero();
 
@@ -171,6 +177,7 @@ private:
 
   bool _target_velocity_valid{false};
   bool _target_valid{false};
+  bool _target_reached{false};
   float _last_yaw{0.f};
 };
 

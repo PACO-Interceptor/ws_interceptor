@@ -98,3 +98,15 @@ Los directorios `build/`, `install/` y `log/` se generan localmente y no forman 
 
 La [wiki introductoria local](docs/wiki/Home.md) explica paso a paso cómo
 preparar el workspace, ejecutar la simulación y entender el papel de cada nodo.
+Es la única fuente: la [wiki de GitHub](https://github.com/Deireb/ws_interceptor/wiki)
+se genera a partir de ella y no se edita a mano.
+
+```bash
+python3 tools/publicar-wiki.py --dry-run   # ver qué cambiaría
+python3 tools/publicar-wiki.py             # publicar
+```
+
+El script convierte los enlaces al formato de la wiki (páginas sin extensión y
+con su nombre en español, rutas al código como URLs absolutas) y sube el
+resultado. Al añadir una página nueva en `docs/wiki/`, hay que darle nombre en
+el diccionario `PAGINAS` de ese script.

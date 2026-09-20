@@ -1,7 +1,7 @@
 # Mapa completo de archivos y dependencias
 
 Esta página cubre **todos los archivos que forman parte de `src/` y `.github/`**.
-El inventario actual contiene 591 archivos:
+El inventario actual contiene 590 archivos:
 
 | Zona | Archivos | Propósito |
 | --- | ---: | --- |
@@ -10,11 +10,10 @@ El inventario actual contiene 591 archivos:
 | `src/px4_ros_com` | 28 | Ejemplos y utilidades de comunicación entre ROS 2 y PX4. |
 | `src/px4-ros2-interface-lib` | 258 | Biblioteca vendorizada para registrar modos PX4 y enviar setpoints. |
 | `.github/workflows` | 3 | Automatización de CI, resúmenes de issues y releases. |
-| `.github/copilot-instructions.md` | 1 | Norma de idioma y estilo para los mensajes de commit generados con Copilot. |
 
 ## Cómo consultar este mapa
 
-No hace falta abrir los 591 archivos en orden: el número indica cuántos archivos
+No hace falta abrir los 590 archivos en orden: el número indica cuántos archivos
 hay, no una secuencia de lectura. Empieza por `src/interceptor`, porque es el
 código de este proyecto, y después consulta solo la dependencia que necesites
 entender. Cuando veas una carpeta, piensa que es una caja con un propósito;
@@ -210,11 +209,7 @@ tocar un archivo:
 ## `.github/workflows`: automatización del repositorio
 
 Esta sección resume qué hace cada uno de los tres workflows propios del
-repositorio (no los de las dependencias vendorizadas, ver más abajo). El único
-archivo de `.github/` que no es un workflow es
-[`copilot-instructions.md`](../../.github/copilot-instructions.md): una
-instrucción de una línea para que GitHub Copilot escriba los mensajes de
-commit en español, cortos y en imperativo.
+repositorio (no los de las dependencias vendorizadas, ver más abajo).
 
 ### `ci-build.yml`
 

@@ -6,10 +6,11 @@ Launch file para el escenario interceptor/target.
 Arranca el agente Micro XRCE-DDS, los 4 nodos de odometria/diagnostico
 (dos instancias de vehicle_odometry_subscriber, una por vehiculo, mas
 target_tf2_odometry e interceptor_tf2_odometry) y un solo modo de
-guiado, elegido con el argumento modo:=pn|pursuit.
+guiado, elegido con el argumento modo:=pn|pursuit (por defecto, pn).
 
 Ejemplo de uso:
-    ros2 launch interceptor interceptor.launch.py modo:=pn
+    ros2 launch interceptor interceptor.launch.py            # equivale a modo:=pn
+    ros2 launch interceptor interceptor.launch.py modo:=pursuit
 
 PX4 se lanza a mano, cada instancia en su propia terminal (desde ~/PX4-Autopilot):
     interceptor (instancia 0): make px4_sitl gz_x500
@@ -36,10 +37,11 @@ def generate_launch_description():
 
     modo_arg = DeclareLaunchArgument(
         'modo',
+        default_value='pn',
         choices=['pn', 'pursuit'],
         description=(
             'Modo de guiado que se registra en PX4 (pn = PN mode, pursuit = Pursuit '
-            'Intercept); solo se lanza uno.'
+            'Intercept); solo se lanza uno. Por defecto, pn.'
         ),
     )
 

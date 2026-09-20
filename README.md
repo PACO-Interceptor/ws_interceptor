@@ -8,7 +8,9 @@ Workspace ROS 2 para el seguimiento e interceptación de un vehículo usando dat
 - ROS 2 Jazzy
 - `colcon`
 - `rosdep`
-- PX4 y Micro XRCE-DDS Agent si se va a ejecutar la simulación
+- Para ejecutar la simulación: PX4 en el commit `14b3f44081`, Micro XRCE-DDS
+  Agent `v2.4.3` y QGroundControl `v5.1.4` (versiones probadas juntas; ver
+  [Instalación y compilación](docs/wiki/Installation-and-build.md))
 
 ## Obtener el workspace
 
@@ -38,10 +40,11 @@ colcon build --packages-up-to interceptor --symlink-install
 ## Ejecutar
 
 ```bash
-ros2 launch interceptor interceptor.launch.py
+ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
 
-El lanzador espera encontrar Micro XRCE-DDS Agent en `~/Micro-XRCE-DDS-Agent` y que los vehículos PX4 estén ejecutándose. Los nodos individuales también pueden iniciarse con `ros2 run interceptor <ejecutable>`.
+El argumento `modo` es opcional y solo acepta `pn` o `pursuit`: elige qué
+modo de guiado se registra en PX4 (solo se lanza uno). Si se omite, vale `pn`. El lanzador espera encontrar Micro XRCE-DDS Agent en `~/Micro-XRCE-DDS-Agent` y que los vehículos PX4 estén ejecutándose. Los nodos individuales también pueden iniciarse con `ros2 run interceptor <ejecutable>`.
 
 ## Estructura
 
@@ -51,3 +54,8 @@ El lanzador espera encontrar Micro XRCE-DDS Agent en `~/Micro-XRCE-DDS-Agent` y 
 - `src/px4-ros2-interface-lib`: biblioteca C++ de la interfaz PX4-ROS 2.
 
 Los directorios `build/`, `install/` y `log/` se generan localmente y no forman parte del repositorio.
+
+## Wiki
+
+La [wiki introductoria local](docs/wiki/Home.md) explica paso a paso cómo
+preparar el workspace, ejecutar la simulación y entender el papel de cada nodo.

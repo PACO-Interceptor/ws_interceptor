@@ -56,8 +56,10 @@ colcon build --packages-up-to interceptor --symlink-install
 ## Ejecutar
 
 ```bash
-ros2 launch interceptor interceptor.launch.py
+ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
+
+El argumento `modo` es opcional (`pn` por defecto, o `pursuit`): solo se lanza el modo de guiado elegido.
 
 O ejecutar un nodo individual, por ejemplo:
 

@@ -37,16 +37,24 @@ succeeds on `main`.
 
 Run everything:
 ```bash
-ros2 launch interceptor interceptor.launch.py
+ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
-Or a single node: `ros2 run interceptor <executable>` (executable names = source file names, e.g.
+`modo` is an optional launch argument, `pn` (the default) or `pursuit`: both mode nodes are in the
+`LaunchDescription`, each behind an `IfCondition`, so only the chosen one is started. Or a single
+node:
+`ros2 run interceptor <executable>` (executable names = source file names, e.g.
 `pursuit_mode`, `PN_mode`).
 
-The launch file starts the Micro XRCE-DDS Agent (expected at `~/Micro-XRCE-DDS-Agent`) plus the
-interceptor package's nodes. It does **not** start PX4 SITL itself — that's run manually per the
-comment at the top of `src/interceptor/launch/interceptor.launch.py`:
+The launch file starts the Micro XRCE-DDS Agent (expected at `~/Micro-XRCE-DDS-Agent`), the
+interceptor package's odometry/diagnostic nodes, and the one guidance mode picked with `modo`. It
+does **not** start PX4 SITL itself — that's run manually from
+`~/PX4-Autopilot`, checked out at commit `14b3f44081` (the one the vendored `px4_msgs` matches;
+see `docs/wiki/Installation-and-build.md`):
 - drone 0 (interceptor): `make px4_sitl gz_x500`
-- drone 1 (target): `PX4_SIM_MODEL=gz_x500 /build/px4_sitl_default/bin/px4 -i 1`
+- drone 1 (target): `GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_default/bin/px4 -i 1`
+
+Without `GZ_IP` the target gets no sensor data; without `PX4_GZ_MODEL_POSE` it spawns inside the
+interceptor. Arming requires QGroundControl v5.1.4 connected (see `docs/wiki/Simulation.md`).
 
 ## Architecture
 
@@ -60,9 +68,16 @@ before touching any node:
    ENU/base_link frame (`px4_ros_com::frame_transforms`), and broadcasts a tf2 transform
    `map -> {target,interceptor}/base_link`. The target's node additionally republishes its ENU
    linear velocity on `target/velocity` (`TwistStamped`, 10 Hz) since tf2 transforms carry no
-   velocity.
-2. **`target_vehicle_odometry_subscriber`** / **`interceptor_vehicle_odometry_subscriber`** — plain
-   debug listeners that dump raw `VehicleOdometry` fields to stdout; not part of the control loop.
+   velocity. Because each PX4 instance measures its local position from its own startup origin,
+   `target_tf2_odometry` also subscribes to `vehicle_local_position` of both instances
+   (`ref_lat`/`ref_lon`/`ref_alt`) and adds the NED offset between the target's and the
+   interceptor's origin to the target's position before publishing, so `map` consistently means
+   "the interceptor's origin" for both vehicles; until both references are valid it withholds the
+   transform and logs a throttled warning instead.
+2. **`vehicle_odometry_subscriber`** — a single parametrized debug listener (`vehicle_name`,
+   `odometry_topic`) that dumps raw `VehicleOdometry` fields to stdout; the launch file starts it
+   twice, once per vehicle, as `target_vehicle_odometry_subscriber` and
+   `interceptor_vehicle_odometry_subscriber`. Not part of the control loop.
 3. **`tf2_listener`** — standalone debug node, logs the `interceptor -> target` tf2 transform plus
    the target's last known NED velocity once a second. Commented out of the default launch file.
 4. **`pursuit_mode`** / **`PN_mode`** — the actual guidance logic, each a
@@ -74,7 +89,10 @@ before touching any node:
    - gate arming/running on `checkArmingAndRunConditions` until target data is valid,
    - compute a velocity/acceleration setpoint from the line-of-sight (LOS) vector each
      `updateSetpoint(dt_s)` tick, sent through a shared `TrajectorySetpointType`,
-   - call `completed(px4_ros2::Result::Success)` once LOS norm < 1 m.
+   - call `completed(px4_ros2::Result::Success)` once per approach, the first `updateSetpoint` tick
+     LOS norm drops below 1 m (an internal `_target_reached` flag, reset in `onActivate()` and
+     whenever LOS norm climbs back above 1 m, keeps this from re-firing every tick while it stays
+     under 1 m).
    `PursuitMode` does straight pure-pursuit (velocity toward target, capped horizontal/vertical
    speed). `PN_Mode` additionally subscribes to `target/velocity` (converting ENU->NED) to run true
    Proportional Navigation (LOS rotation rate × relative velocity, scaled by a navigation constant,

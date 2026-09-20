@@ -80,7 +80,9 @@ Si te falta alguno, aquí tienes su guía oficial de instalación:
   [guía oficial de instalación para Linux](https://docs.qgroundcontrol.com/Stable_V5.1/en/qgc-user-guide/getting_started/download_and_install.html),
   que explica los paquetes del sistema que necesita. Usa esa versión concreta
   y no la "última" ni la *Daily*: es la que se ha probado junto con la versión
-  de PX4 de esta página.
+  de PX4 de esta página. Un detalle de esa guía: pide instalar `libfuse2`, pero
+  en Ubuntu 24.04 ese paquete se llama `libfuse2t64`
+  (`sudo apt install libfuse2t64`). Sin él, el AppImage no llega a abrirse.
 
 Una **estación de tierra** (*GCS*, *Ground Control Station*) es el programa
 con el que una persona supervisa y manda órdenes al vehículo: armar, despegar,

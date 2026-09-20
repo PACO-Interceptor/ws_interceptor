@@ -27,19 +27,18 @@ exactamente las mismas piezas dentro de esa estructura:
 
 - [`interceptor_tf2_odometry.cpp`](../../src/interceptor/src/interceptor_tf2_odometry.cpp)
 - [`target_tf2_odometry.cpp`](../../src/interceptor/src/target_tf2_odometry.cpp)
-- [`target_vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/target_vehicle_odometry_subscriber.cpp)
-- [`interceptor_vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/interceptor_vehicle_odometry_subscriber.cpp)
+- [`vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/vehicle_odometry_subscriber.cpp)
 - [`tf2_listener.cpp`](../../src/interceptor/src/tf2_listener.cpp)
 
 ### Includes
 
 - `rclcpp/rclcpp.hpp` y `px4_msgs/msg/vehicle_odometry.hpp` — comunes a los
-  cinco archivos. El primero aporta `Node`, publishers, subscribers, timers
+  cuatro archivos. El primero aporta `Node`, publishers, subscribers, timers
   y logging; el segundo trae el tipo `VehicleOdometry`, el mensaje que
   envía PX4.
 - `geometry_msgs` y `tf2_ros` — el subconjunto que trabaja con tf2 (los dos
-  conversores y `tf2_listener`) los añade encima de lo anterior; los dos
-  suscriptores de diagnóstico no los necesitan, porque solo imprimen datos
+  conversores y `tf2_listener`) los añade encima de lo anterior; el
+  suscriptor de diagnóstico no los necesita, porque solo imprime datos
   por pantalla. `geometry_msgs` trae `TransformStamped` (y además
   `TwistStamped` en `target_tf2_odometry.cpp`); `tf2_ros` trae el
   broadcaster en los conversores, y el buffer y el listener en

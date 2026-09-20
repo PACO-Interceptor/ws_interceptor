@@ -92,7 +92,7 @@ tres páginas de arriba hacia abajo, en este orden:
    relacionar cada ejecutable con su `.cpp`; y por último
    `interceptor.launch.py`, para ver qué arranca y en qué orden.
 2. **En [nodos de odometría y tf2](Line-by-line-odometry-nodes.md)**: primero
-   los suscriptores de diagnóstico (son las callbacks más simples del
+   el suscriptor de diagnóstico (son las callbacks más simples del
    paquete), después los conversores tf2 y `tf2_listener`.
 3. **En [modos de guiado](Line-by-line-guidance-modes.md)**: `pursuit_mode.cpp`
    antes que `PN_mode.cpp` (Pursuit es la base sobre la que PN añade cosas).
@@ -217,8 +217,7 @@ Cada pareja `add_executable` + `ament_target_dependencies` hace dos cosas:
 
 | Ejecutable | Fuente | Dependencias particulares |
 | --- | --- | --- |
-| `target_vehicle_odometry_subscriber` | `src/target_vehicle_odometry_subscriber.cpp` | ROS 2, tf2, geometría, mensajes PX4 y sensores. |
-| `interceptor_vehicle_odometry_subscriber` | `src/interceptor_vehicle_odometry_subscriber.cpp` | Igual que el anterior. |
+| `vehicle_odometry_subscriber` | `src/vehicle_odometry_subscriber.cpp` | ROS 2, tf2, geometría, mensajes PX4 y sensores. El launch lo arranca dos veces (una por vehículo) con `name=`/`parameters=` distintos. |
 | `interceptor_tf2_odometry` | `src/interceptor_tf2_odometry.cpp` | Añade `px4_ros_com` para convertir frames. |
 | `target_tf2_odometry` | `src/target_tf2_odometry.cpp` | Añade `px4_ros_com` para convertir frames y `px4_ros2_cpp` para calcular el desplazamiento de origen (`vectorToGlobalPosition`); además publica velocidad. |
 | `tf2_listener` | `src/tf2_listener.cpp` | Buffer/listener tf2 y odometría PX4. |
@@ -238,7 +237,7 @@ Dentro de `if(BUILD_TESTING)`:
   cpplint, siguiendo los comentarios del propio archivo.
 - `ament_lint_auto_find_test_dependencies()` registra los tests automáticos.
 
-`install(TARGETS ... DESTINATION lib/${PROJECT_NAME})` instala los siete
+`install(TARGETS ... DESTINATION lib/${PROJECT_NAME})` instala los seis
 binarios en la carpeta estándar del paquete. `install(DIRECTORY launch
 DESTINATION share/${PROJECT_NAME})` instala el launch. Finalmente,
 `ament_package()` genera metadatos para que ROS 2 encuentre el paquete.
@@ -257,8 +256,8 @@ número de línea coincide.
 | 3 | `"""` | Abre un docstring: un comentario de varias líneas que documenta el archivo. |
 | 4 | `Launch file para el escenario interceptor/target.` | Texto descriptivo, no se ejecuta. |
 | 6 | `Arranca el agente Micro XRCE-DDS, los 4 nodos de odometria/diagnostico` | Resume qué arranca este launch: el agente DDS y los 4 nodos de odometría/diagnóstico. |
-| 7 | `(target_vehicle_odometry_subscriber, target_tf2_odometry,` | Nombra esos 4 nodos, entre paréntesis. |
-| 8 | `interceptor_vehicle_odometry_subscriber, interceptor_tf2_odometry) y un solo modo de` | Cierra la lista de nodos y añade que solo se lanza un modo de guiado. |
+| 7 | `(dos instancias de vehicle_odometry_subscriber, una por vehiculo, mas` | Nombra esos nodos: dos instancias del suscriptor de diagnóstico, una por vehículo. |
+| 8 | `target_tf2_odometry e interceptor_tf2_odometry) y un solo modo de` | Cierra la lista con los dos conversores tf2 y añade que solo se lanza un modo de guiado. |
 | 9 | `guiado, elegido con el argumento modo:=pn\|pursuit.` | Indica que el modo se elige con el argumento `modo`, que acepta `pn` o `pursuit`. |
 | 11 | `Ejemplo de uso:` | Introduce el ejemplo de invocación. |
 | 12 | `    ros2 launch interceptor interceptor.launch.py modo:=pn` | Comando de ejemplo, con `modo:=pn`. |
@@ -296,51 +295,61 @@ número de línea coincide.
 | 53 | `)` | Cierra la llamada a `ExecuteProcess`. |
 | 55 | `target_vehicle_odometry_subscriber_node = Node(` | Empieza a construir el bloque del primer nodo. |
 | 56 | `package='interceptor',` | Paquete ROS 2 donde buscar el ejecutable. |
-| 57 | `executable='target_vehicle_odometry_subscriber',` | Nombre del binario a ejecutar (el suscriptor de diagnóstico con nombre "invertido", ver [Nodos y tópicos](Nodes-and-topics.md)). |
-| 58 | `output='log',` | Su salida va a los logs, no a pantalla. |
-| 59 | `)` | Cierra el bloque de este nodo. |
-| 61 | `target_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del target. |
-| 62 | `package='interceptor',` | Igual que la línea 56. |
-| 63 | `executable='target_tf2_odometry',` | Ejecutable que convierte la odometría del target y publica `target/base_link` y `target/velocity`. |
-| 64 | `output='screen',` | Aquí la salida sí va directamente a la terminal (`screen`), a diferencia de los diagnósticos. |
-| 65 | `)` | Cierra el bloque. |
-| 67 | `interceptor_vehicle_odometry_subscriber_node = Node(` | Empieza el bloque del segundo suscriptor de diagnóstico. |
-| 68 | `package='interceptor',` | Igual que arriba. |
-| 69 | `executable='interceptor_vehicle_odometry_subscriber',` | Este ejecutable escucha en realidad la odometría del target (instancia 1); ver el aviso de nombres invertidos. |
-| 70 | `output='log',` | Salida a logs. |
-| 71 | `)` | Cierra el bloque. |
-| 73 | `interceptor_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del interceptor. |
-| 74 | `package='interceptor',` | Igual que arriba. |
-| 75 | `executable='interceptor_tf2_odometry',` | Publica `map -> interceptor/base_link`. |
-| 76 | `output='screen',` | Salida a pantalla. |
-| 77 | `)` | Cierra el bloque. |
-| 79 | `# tf2_listener_node = Node(` | Línea comentada: empieza con `#`, así que Python la ignora por completo. |
-| 80 | `#     package='interceptor',` | Comentada, ignorada. |
-| 81 | `#     executable='tf2_listener',` | Comentada, ignorada. |
-| 82 | `#     output='screen',` | Comentada, ignorada. |
-| 83 | `# )` | Comentada, ignorada. Todo este bloque de 5 líneas está desactivado: por eso `tf2_listener` no arranca con el launch por defecto. |
-| 85 | `pursuit_mode_node = Node(` | Empieza el bloque del modo de persecución pura. |
-| 86 | `package='interceptor',` | Igual que arriba. |
-| 87 | `executable='pursuit_mode',` | Ejecutable del modo `pursuit_mode`. |
-| 88 | `output='screen',` | Salida a pantalla. |
-| 89 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('modo'), 'pursuit')),` | Solo se lanza este nodo si `modo` vale `pursuit`: compara el valor del argumento con la cadena `'pursuit'`. |
-| 90 | `)` | Cierra el bloque. |
-| 92 | `PN_mode_node = Node(` | Empieza el bloque del modo de navegación proporcional. |
-| 93 | `package='interceptor',` | Igual que arriba. |
-| 94 | `executable='PN_mode',` | Ejecutable del modo `PN_mode`. |
-| 95 | `output='screen',` | Salida a pantalla. |
-| 96 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('modo'), 'pn')),` | Solo se lanza este nodo si `modo` vale `pn`. |
-| 97 | `)` | Cierra el bloque. |
-| 99 | `return LaunchDescription([` | Construye y devuelve la lista de acciones que ROS 2 ejecutará; el orden de esta lista es el orden de arranque. |
-| 100 | `modo_arg,` | Primero se declara el argumento `modo` (debe ir antes de usarse en las condiciones de los nodos). |
-| 101 | `micro_xrce_agent,` | Después se arranca el agente DDS. |
-| 102 | `target_vehicle_odometry_subscriber_node,` | Después este nodo. |
-| 103 | `target_tf2_odometry_node,` | Después este. |
-| 104 | `interceptor_vehicle_odometry_subscriber_node,` | Después este. |
-| 105 | `interceptor_tf2_odometry_node,` | Después este. |
-| 106 | `pursuit_mode_node,` | Este solo arranca de verdad si `modo:=pursuit`. |
-| 107 | `PN_mode_node,` | Y este solo si `modo:=pn`. |
-| 108 | `])` | Cierra la lista y la llamada a `LaunchDescription`. |
+| 57 | `executable='vehicle_odometry_subscriber',` | Nombre del binario a ejecutar: el suscriptor de diagnóstico parametrizado (ver [Nodos y tópicos](Nodes-and-topics.md)). |
+| 58 | `name='target_vehicle_odometry_subscriber',` | Nombre visible del nodo en `ros2 node list`, distinto del ejecutable. |
+| 59 | `parameters=[{` | Empieza la lista de parámetros de esta instancia. |
+| 60 | `'vehicle_name': 'target',` | Fija `vehicle_name` a `target`. |
+| 61 | `'odometry_topic': '/px4_1/fmu/out/vehicle_odometry',` | Fija `odometry_topic` al tópico de la instancia 1 (target): con esto el nombre del nodo y el tópico que escucha coinciden. |
+| 62 | `}],` | Cierra la lista de parámetros. |
+| 63 | `output='log',` | Su salida va a los logs, no a pantalla. |
+| 64 | `)` | Cierra el bloque de este nodo. |
+| 66 | `target_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del target. |
+| 67 | `package='interceptor',` | Igual que la línea 56. |
+| 68 | `executable='target_tf2_odometry',` | Ejecutable que convierte la odometría del target y publica `target/base_link` y `target/velocity`. |
+| 69 | `output='screen',` | Aquí la salida sí va directamente a la terminal (`screen`), a diferencia de los diagnósticos. |
+| 70 | `)` | Cierra el bloque. |
+| 72 | `interceptor_vehicle_odometry_subscriber_node = Node(` | Empieza el bloque del segundo suscriptor de diagnóstico. |
+| 73 | `package='interceptor',` | Igual que arriba. |
+| 74 | `executable='vehicle_odometry_subscriber',` | Mismo ejecutable que la primera instancia, con otros parámetros. |
+| 75 | `name='interceptor_vehicle_odometry_subscriber',` | Nombre visible de esta instancia. |
+| 76 | `parameters=[{` | Empieza la lista de parámetros. |
+| 77 | `'vehicle_name': 'interceptor',` | Fija `vehicle_name` a `interceptor`. |
+| 78 | `'odometry_topic': '/fmu/out/vehicle_odometry',` | Fija `odometry_topic` al tópico de la instancia 0 (interceptor). |
+| 79 | `}],` | Cierra la lista de parámetros. |
+| 80 | `output='log',` | Salida a logs. |
+| 81 | `)` | Cierra el bloque. |
+| 83 | `interceptor_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del interceptor. |
+| 84 | `package='interceptor',` | Igual que arriba. |
+| 85 | `executable='interceptor_tf2_odometry',` | Publica `map -> interceptor/base_link`. |
+| 86 | `output='screen',` | Salida a pantalla. |
+| 87 | `)` | Cierra el bloque. |
+| 89 | `# tf2_listener_node = Node(` | Línea comentada: empieza con `#`, así que Python la ignora por completo. |
+| 90 | `#     package='interceptor',` | Comentada, ignorada. |
+| 91 | `#     executable='tf2_listener',` | Comentada, ignorada. |
+| 92 | `#     output='screen',` | Comentada, ignorada. |
+| 93 | `# )` | Comentada, ignorada. Todo este bloque de 5 líneas está desactivado: por eso `tf2_listener` no arranca con el launch por defecto. |
+| 95 | `pursuit_mode_node = Node(` | Empieza el bloque del modo de persecución pura. |
+| 96 | `package='interceptor',` | Igual que arriba. |
+| 97 | `executable='pursuit_mode',` | Ejecutable del modo `pursuit_mode`. |
+| 98 | `output='screen',` | Salida a pantalla. |
+| 99 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('modo'), 'pursuit')),` | Solo se lanza este nodo si `modo` vale `pursuit`: compara el valor del argumento con la cadena `'pursuit'`. |
+| 100 | `)` | Cierra el bloque. |
+| 102 | `PN_mode_node = Node(` | Empieza el bloque del modo de navegación proporcional. |
+| 103 | `package='interceptor',` | Igual que arriba. |
+| 104 | `executable='PN_mode',` | Ejecutable del modo `PN_mode`. |
+| 105 | `output='screen',` | Salida a pantalla. |
+| 106 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('modo'), 'pn')),` | Solo se lanza este nodo si `modo` vale `pn`. |
+| 107 | `)` | Cierra el bloque. |
+| 109 | `return LaunchDescription([` | Construye y devuelve la lista de acciones que ROS 2 ejecutará; el orden de esta lista es el orden de arranque. |
+| 110 | `modo_arg,` | Primero se declara el argumento `modo` (debe ir antes de usarse en las condiciones de los nodos). |
+| 111 | `micro_xrce_agent,` | Después se arranca el agente DDS. |
+| 112 | `target_vehicle_odometry_subscriber_node,` | Después este nodo. |
+| 113 | `target_tf2_odometry_node,` | Después este. |
+| 114 | `interceptor_vehicle_odometry_subscriber_node,` | Después este. |
+| 115 | `interceptor_tf2_odometry_node,` | Después este. |
+| 116 | `pursuit_mode_node,` | Este solo arranca de verdad si `modo:=pursuit`. |
+| 117 | `PN_mode_node,` | Y este solo si `modo:=pn`. |
+| 118 | `])` | Cierra la lista y la llamada a `LaunchDescription`. |
 
 `tf2_listener_node` no aparece en esta lista final porque su variable ni
 siquiera llegó a crearse (está comentada arriba): no basta con comentar el

@@ -8,98 +8,84 @@ la has leído: ahí están el glosario de sintaxis de C++ (`override`, `explicit
 notas de "cómo usar este análisis" que también aplican aquí. La tercera página
 es [Modos de guiado, línea por línea](Line-by-line-guidance-modes.md).
 
-Esta página cubre los dos suscriptores de diagnóstico, los dos conversores
-tf2 (`interceptor_tf2_odometry`, `target_tf2_odometry`) y `tf2_listener` — los
+Esta página cubre el suscriptor de diagnóstico de odometría
+(`vehicle_odometry_subscriber`, un único ejecutable que el launch arranca dos
+veces con parámetros distintos), los dos conversores tf2
+(`interceptor_tf2_odometry`, `target_tf2_odometry`) y `tf2_listener` — los
 nodos que reciben la odometría de PX4, la convierten y la relacionan mediante
 tf2, sin calcular ningún setpoint de vuelo.
 
-## 1. Suscriptores de odometría para diagnóstico
+## 1. `vehicle_odometry_subscriber.cpp`
 
-Archivos:
+Archivo: [`vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/vehicle_odometry_subscriber.cpp)
 
-- [`target_vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/target_vehicle_odometry_subscriber.cpp)
-- [`interceptor_vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/interceptor_vehicle_odometry_subscriber.cpp)
-
-Son casi idénticos: solo cambian el tópico al que se suscriben, el nombre del
-nodo, los textos impresos y cómo se reparte esa suscripción entre líneas (ver
-más abajo). La tabla siguiente cubre línea por línea
-`target_vehicle_odometry_subscriber.cpp` (60 líneas); justo después, una
-segunda tabla cubre las líneas de `interceptor_vehicle_odometry_subscriber.cpp`
-(61 líneas) que son distintas.
-
-### 1.1. `target_vehicle_odometry_subscriber.cpp`, línea por línea
+Un solo ejecutable sirve para diagnosticar los dos vehículos: el launch lo
+arranca dos veces, cada una con su propio `name=` y sus propios parámetros
+`vehicle_name`/`odometry_topic` (ver
+[Archivos de proyecto y construcción](Line-by-line-project-and-build-files.md)).
 
 | Línea | Código | Explicación |
 | ---: | --- | --- |
-| 1-6 | Comentario Doxygen `/** ... */` | Documenta archivo, propósito (`Vehicle Odometry uORB topic listener example`) y autor; no se ejecuta. |
-| 8 | `#include <rclcpp/rclcpp.hpp>` | Trae `Node`, `init`, `spin`, QoS y logging. |
-| 9 | `#include <px4_msgs/msg/vehicle_odometry.hpp>` | Trae el tipo `VehicleOdometry`. |
-| 11-13 | Comentario `/** @brief ... */` | Documenta la clase que sigue. |
-| 14 | `class VehicleOdometrySubscriber : public rclcpp::Node` | Declara la clase, heredando de `rclcpp::Node`. |
-| 15 | `{` | Abre el cuerpo de la clase. |
-| 16 | `public:` | Lo siguiente es accesible desde fuera de la clase. |
-| 17 | `explicit VehicleOdometrySubscriber()` | Declara el constructor sin parámetros; `explicit` evita conversiones implícitas. |
-| 18 | `: Node("target_vehicle_odometry_subscriber")` | Llama al constructor de `Node`, fijando este nombre visible (aunque, como se explica más abajo, escucha la odometría del interceptor). |
-| 19 | `{` | Abre el cuerpo del constructor. |
-| 20 | `rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;` | Copia un perfil de QoS pensado para datos de sensores. |
-| 21 | `auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);` | Convierte ese perfil en un `QoS` de ROS 2 con cola de 5 mensajes. |
-| 23 | `subscription_ =` | Empieza a asignar el resultado de crear la suscripción al atributo `subscription_`. |
-| 24 | `this->create_subscription<px4_msgs::msg::VehicleOdometry>("/fmu/out/vehicle_odometry", qos,` | Crea la suscripción al tópico `/fmu/out/vehicle_odometry` (instancia 0, la del interceptor) con la calidad de servicio `qos`. |
-| 25 | `[this](const px4_msgs::msg::VehicleOdometry::UniquePtr msg) {` | Lambda que se ejecuta con cada mensaje recibido; `msg` es ese mensaje. |
-| 26 | `std::cout << "\n\n\n...";` | Imprime muchas líneas en blanco para "limpiar" visualmente la consola antes de cada muestra. |
-| 27 | `std::cout << "RECEIVED VEHICLE ODOMETRY DATA" << std::endl;` | Imprime un encabezado. |
-| 28 | `std::cout << "Timestamp: " << msg->timestamp << std::endl;` | Imprime la marca de tiempo del mensaje PX4. |
-| 29 | `std::cout << "Pose frame: " << msg->pose_frame << std::endl;` | Imprime el identificador de frame que PX4 asigna a la pose. |
-| 30 | `std::cout << "X Position: " << msg->position[0] << std::endl;` | Imprime la posición X (NED) tal cual la envía PX4, sin convertir. |
-| 31 | `std::cout << "Y Position: " << msg->position[1] << std::endl;` | Posición Y (NED). |
-| 32 | `std::cout << "Z Position: " << msg->position[2] << std::endl;` | Posición Z (NED). |
-| 33 | `std::cout << "q[0]: " << msg->q[0] << std::endl;` | Primer componente del cuaternión de orientación (`w`). |
-| 34 | `std::cout << "q[1]: " << msg->q[1] << std::endl;` | Segundo componente (`x`). |
-| 35 | `std::cout << "q[2]: " << msg->q[2] << std::endl;` | Tercer componente (`y`). |
-| 36 | `std::cout << "q[3]: " << msg->q[3] << std::endl;` | Cuarto componente (`z`). |
-| 37 | `std::cout << "X Velocity: " << msg->velocity[0] << std::endl;` | Velocidad X (NED). |
-| 38 | `std::cout << "Y Velocity: " << msg->velocity[1] << std::endl;` | Velocidad Y (NED). |
-| 39 | `std::cout << "Z Velocity: " << msg->velocity[2] << std::endl;` | Velocidad Z (NED). |
-| 40-42 | `std::cout << "Velocity magnitude: " << sqrt(vx*vx + vy*vy + vz*vz) << std::endl;` | Calcula e imprime la longitud del vector velocidad (raíz cuadrada de la suma de cuadrados). |
-| 43 | `});` | Cierra la lambda y la llamada a `create_subscription`. |
-| 44 | `}` | Cierra el constructor. |
-| 46 | `private:` | Lo siguiente solo es accesible dentro de la clase. |
-| 47 | `rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr subscription_;` | Guarda la suscripción; si no se guardara aquí, se destruiría al salir del constructor y dejaría de recibir mensajes. |
-| 49 | `};` | Cierra la clase. |
-| 51 | `int main(int argc, char *argv[])` | Punto de entrada del programa. |
-| 52 | `{` | Abre `main`. |
-| 53 | `std::cout << "Starting target_vehicle_odometry listener node..." << std::endl;` | Imprime un mensaje de arranque. |
-| 54 | `setvbuf(stdout, NULL, _IONBF, BUFSIZ);` | Desactiva el buffering de la salida estándar para que los `std::cout` aparezcan de inmediato. |
-| 55 | `rclcpp::init(argc, argv);` | Inicializa ROS 2. |
-| 56 | `rclcpp::spin(std::make_shared<VehicleOdometrySubscriber>());` | Crea el nodo y lo mantiene vivo procesando la callback de la línea 25 mientras el proceso corre. |
-| 58 | `rclcpp::shutdown();` | Libera los recursos de ROS 2 cuando `spin` termina. |
-| 59 | `return 0;` | Indica al sistema operativo que el programa terminó sin errores. |
-| 60 | `}` | Cierra `main`. |
-
-### 1.2. `interceptor_vehicle_odometry_subscriber.cpp`: solo lo que cambia
-
-El resto de líneas son idénticas letra por letra a la tabla anterior, con
-cuatro diferencias: tres de contenido y una de formato que además desplaza en
-una línea todo lo que viene después (por eso este archivo tiene 61 líneas en
-vez de 60):
-
-| Línea | Código | Explicación |
-| ---: | --- | --- |
-| 3 | `@file interceptor_vehicle_odometry_subscriber.cpp` | El comentario Doxygen indica este nombre de archivo en vez del otro. |
-| 18 | `: Node("interceptor_vehicle_odometry_subscriber")` | El nodo se registra con este nombre visible. |
-| 24 | `this->create_subscription<px4_msgs::msg::VehicleOdometry>("px4_1/fmu/out/vehicle_odometry",` | **Este es el detalle clave**: escucha `px4_1/fmu/out/vehicle_odometry`, es decir, la instancia **1**, la del target, no la del interceptor. |
-| 25 | `qos,` | Aquí `qos` está en su propia línea; en `target_vehicle_odometry_subscriber.cpp` comparte la línea 24 con el tópico. Es la diferencia de formato: por ella este archivo suma una línea más y todo lo que sigue queda desplazado una posición respecto a la tabla 1.1. |
-| 54 | `std::cout << "Starting interceptor_vehicle_odometry subscriber node..." << std::endl;` | Mensaje de arranque con este nombre; es la misma línea que la 53 de la tabla 1.1, desplazada una posición por el motivo anterior. |
+| 1-8 | Comentario Doxygen `/** ... */` | Documenta archivo, propósito (`Vehicle Odometry uORB topic listener example`), autor, y explica que un solo ejecutable sirve para los dos vehículos según sus parámetros. |
+| 10 | `#include <rclcpp/rclcpp.hpp>` | Trae `Node`, `init`, `spin`, QoS y logging. |
+| 11 | `#include <px4_msgs/msg/vehicle_odometry.hpp>` | Trae el tipo `VehicleOdometry`. |
+| 13-15 | Comentario Doxygen de la clase | Documenta la clase que sigue. |
+| 16 | `class VehicleOdometrySubscriber : public rclcpp::Node` | Declara la clase, heredando de `rclcpp::Node`. |
+| 17 | `{` | Abre el cuerpo de la clase. |
+| 18 | `public:` | Lo siguiente es accesible desde fuera de la clase. |
+| 19 | `explicit VehicleOdometrySubscriber()` | Declara el constructor sin parámetros; `explicit` evita conversiones implícitas. |
+| 20 | `: Node("vehicle_odometry_subscriber")` | Llama al constructor de `Node`, fijando este nombre visible por defecto; el launch le asigna otro distinto a cada instancia con `name=`. |
+| 21 | `{` | Abre el cuerpo del constructor. |
+| 22 | `vehicle_name_ = this->declare_parameter<std::string>("vehicle_name", "interceptor");` | Declara el parámetro `vehicle_name` (por defecto `"interceptor"`) y guarda su valor. |
+| 23-24 | `std::string odometry_topic = this->declare_parameter<std::string>("odometry_topic", "/fmu/out/vehicle_odometry");` | Declara el parámetro `odometry_topic` (por defecto `/fmu/out/vehicle_odometry`) y lo guarda en una variable local. |
+| 26 | `rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;` | Copia un perfil de QoS pensado para datos de sensores. |
+| 27 | `auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);` | Convierte ese perfil en un `QoS` de ROS 2 con cola de 5 mensajes. |
+| 29 | `subscription_ =` | Empieza a asignar el resultado de crear la suscripción al atributo `subscription_`. |
+| 30 | `this->create_subscription<px4_msgs::msg::VehicleOdometry>(odometry_topic, qos,` | Crea la suscripción al tópico indicado por el parámetro `odometry_topic` con la calidad de servicio `qos`. |
+| 31 | `[this](const px4_msgs::msg::VehicleOdometry::UniquePtr msg) {` | Lambda que se ejecuta con cada mensaje recibido; `msg` es ese mensaje. |
+| 32 | `std::cout << "\n\n\n...";` | Imprime muchas líneas en blanco para "limpiar" visualmente la consola antes de cada muestra. |
+| 33 | `std::cout << "RECEIVED VEHICLE ODOMETRY DATA (" << vehicle_name_ << ")" << std::endl;` | Imprime un encabezado que incluye el nombre del vehículo leído del parámetro, p. ej. `RECEIVED VEHICLE ODOMETRY DATA (target)`. |
+| 34 | `std::cout << "Timestamp: " << msg->timestamp << std::endl;` | Imprime la marca de tiempo del mensaje PX4. |
+| 35 | `std::cout << "Pose frame: " << msg->pose_frame << std::endl;` | Imprime el identificador de frame que PX4 asigna a la pose. |
+| 36 | `std::cout << "X Position: " << msg->position[0] << std::endl;` | Imprime la posición X (NED) tal cual la envía PX4, sin convertir. |
+| 37 | `std::cout << "Y Position: " << msg->position[1] << std::endl;` | Posición Y (NED). |
+| 38 | `std::cout << "Z Position: " << msg->position[2] << std::endl;` | Posición Z (NED). |
+| 39 | `std::cout << "q[0]: " << msg->q[0] << std::endl;` | Primer componente del cuaternión de orientación (`w`). |
+| 40 | `std::cout << "q[1]: " << msg->q[1] << std::endl;` | Segundo componente (`x`). |
+| 41 | `std::cout << "q[2]: " << msg->q[2] << std::endl;` | Tercer componente (`y`). |
+| 42 | `std::cout << "q[3]: " << msg->q[3] << std::endl;` | Cuarto componente (`z`). |
+| 43 | `std::cout << "X Velocity: " << msg->velocity[0] << std::endl;` | Velocidad X (NED). |
+| 44 | `std::cout << "Y Velocity: " << msg->velocity[1] << std::endl;` | Velocidad Y (NED). |
+| 45 | `std::cout << "Z Velocity: " << msg->velocity[2] << std::endl;` | Velocidad Z (NED). |
+| 46-48 | `std::cout << "Velocity magnitude: " << sqrt(msg->velocity[0] * msg->velocity[0] + msg->velocity[1] * msg->velocity[1] + msg->velocity[2] * msg->velocity[2]) << std::endl;` | Calcula e imprime la longitud del vector velocidad (raíz cuadrada de la suma de cuadrados). |
+| 49 | `});` | Cierra la lambda y la llamada a `create_subscription`. |
+| 50 | `}` | Cierra el constructor. |
+| 52 | `private:` | Lo siguiente solo es accesible dentro de la clase. |
+| 53 | `rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr subscription_;` | Guarda la suscripción; si no se guardara aquí, se destruiría al salir del constructor y dejaría de recibir mensajes. |
+| 54 | `std::string vehicle_name_;` | Guarda el nombre del vehículo leído del parámetro, para usarlo en el encabezado impreso. |
+| 56 | `};` | Cierra la clase. |
+| 58 | `int main(int argc, char *argv[])` | Punto de entrada del programa. |
+| 59 | `{` | Abre `main`. |
+| 60 | `std::cout << "Starting vehicle_odometry_subscriber node..." << std::endl;` | Imprime un mensaje de arranque. |
+| 61 | `setvbuf(stdout, NULL, _IONBF, BUFSIZ);` | Desactiva el buffering de la salida estándar para que los `std::cout` aparezcan de inmediato. |
+| 62 | `rclcpp::init(argc, argv);` | Inicializa ROS 2. |
+| 63 | `rclcpp::spin(std::make_shared<VehicleOdometrySubscriber>());` | Crea el nodo y lo mantiene vivo procesando la callback de la línea 31 mientras el proceso corre. |
+| 65 | `rclcpp::shutdown();` | Libera los recursos de ROS 2 cuando `spin` termina. |
+| 66 | `return 0;` | Indica al sistema operativo que el programa terminó sin errores. |
+| 67 | `}` | Cierra `main`. |
 
 ### Por qué esto importa
 
-El archivo llamado `target_vehicle_odometry_subscriber` escucha en realidad la
-odometría del **interceptor** (instancia 0, línea 24 de la tabla 1.1), y el
-archivo llamado `interceptor_vehicle_odometry_subscriber` escucha la del
-**target** (instancia 1, línea 24 de la tabla 1.2). Los nombres de archivo
-están invertidos respecto al tópico real. Esto se documenta deliberadamente
-para que nadie use el nombre del ejecutable como prueba de qué vehículo está
-diagnosticando: hay que mirar el tópico, no el nombre.
+Antes había dos archivos casi idénticos, uno por vehículo, que solo se
+diferenciaban en el nombre del nodo y en el tópico. Esa copia duplicada acabó
+provocando un error que estuvo tiempo en el código: el ejecutable llamado
+`target_...` escuchaba en realidad la odometría del interceptor, y al revés.
+
+Ahora hay un solo archivo y el vehículo se elige con parámetros, así que el
+nombre de cada nodo lo decide el launch junto al tópico que le pasa: los dos
+datos van en el mismo sitio y no pueden descuadrarse. Es un ejemplo de por qué
+conviene parametrizar en lugar de duplicar: el fallo no fue un descuido
+puntual, sino algo que la duplicación hacía fácil.
 
 ## 2. `interceptor_tf2_odometry.cpp`
 
@@ -251,78 +237,84 @@ equivalente en el conversor del interceptor.
 | 100 | ★ `if (!ref_valid_interceptor_ || !ref_valid_target_) {` | Nuevo: si falta la referencia global de alguno de los dos vehículos, el offset entre orígenes no se puede calcular todavía. |
 | 101 | ★ `// Missing global reference of interceptor and/or target: the NED offset` | Comentario que explica el porqué del `return`. |
 | 102 | ★ `// between origins can't be computed yet, so don't publish a wrong transform` | Continúa el comentario. |
-| 103 | ★ `RCLCPP_WARN_THROTTLE(` | Nuevo: avisa por log, limitado en frecuencia. |
-| 104 | ★ `this->get_logger(), *this->get_clock(), 5000,` | Como mucho un aviso cada 5000 ms. |
-| 105 | ★ `"Waiting for global reference (ref_lat/ref_lon/ref_alt) of%s%s before publishing "` | Primera parte del texto del aviso. |
-| 106 | ★ `"map -> %s/base_link",` | Segunda parte del texto del aviso. |
-| 107 | ★ `!ref_valid_interceptor_ ? " interceptor" : "",` | Inserta `" interceptor"` en el aviso si falta esa referencia. |
-| 108 | ★ `!ref_valid_target_ ? " target" : "",` | Inserta `" target"` en el aviso si falta esa. |
-| 109 | ★ `vehicle_name_.c_str());` | Nombre del vehículo (`target`) que aparece al final del aviso. |
-| 110 | ★ `return;` | No publica `map -> target/base_link` mientras falte alguna referencia global. |
-| 111 | ★ `}` | Cierra el bloque `if`. |
-| 113 | `// PX4 position is NED, ROS/tf2 expects ENU` | Igual que en el otro conversor. |
-| 114 | `Eigen::Vector3d position_ned(msg->position[0], msg->position[1], msg->position[2]);` | Igual. |
-| 116 | ★ `// NED offset of the target's origin with respect to the interceptor's,` | Nuevo comentario. |
-| 117 | ★ `// so both vehicles end up expressed in the same origin (map = interceptor's)` | Continúa el comentario. |
-| 118 | ★ `Eigen::Vector3d global_position_interceptor(` | Nuevo: arma el vector lat/lon/alt de referencia del interceptor. |
-| 119 | ★ `ref_lat_interceptor_, ref_lon_interceptor_, ref_alt_interceptor_);` | Continúa la construcción del vector. |
-| 120 | ★ `Eigen::Vector3d global_position_target(` | Nuevo: arma el vector lat/lon/alt de referencia del target. |
-| 121 | ★ `ref_lat_target_, ref_lon_target_, ref_alt_target_);` | Continúa la construcción del vector. |
-| 122 | ★ `Eigen::Vector3f origin_offset_ned = px4_ros2::vectorToGlobalPosition(` | Nuevo: calcula el desplazamiento NED del origen del target respecto al del interceptor. |
-| 123 | ★ `global_position_interceptor, global_position_target);` | Argumentos: posición global "ahora" (interceptor) y "siguiente" (target). |
-| 124 | ★ `position_ned += origin_offset_ned.cast<double>();` | Nuevo: suma ese desplazamiento a la posición NED del target, antes de convertirla a ENU. |
-| 126 | `Eigen::Vector3d position_enu = ned_to_enu_local_frame(position_ned);` | Igual que en el otro conversor, pero ahora con la posición ya desplazada al origen del interceptor. |
-| 128 | `// PX4 quaternion is (w, x, y, z), aircraft frame relative to NED` | Igual. |
-| 129 | `Eigen::Quaterniond q_ned(msg->q[0], msg->q[1], msg->q[2], msg->q[3]);` | Igual. |
-| 130 | `Eigen::Quaterniond q_enu = px4_to_ros_orientation(q_ned);` | Igual. |
-| 132 | `geometry_msgs::msg::TransformStamped t;` | Igual. |
-| 133 | `t.header.stamp = this->get_clock()->now();` | Igual. |
-| 134 | `t.header.frame_id = "map";` | Igual. |
-| 135 | `t.child_frame_id = vehicle_name_ + "/base_link";` | Aquí resuelve a `target/base_link`. |
-| 137 | `t.transform.translation.x = position_enu.x();` | Igual que en el otro conversor. |
-| 138 | `t.transform.translation.y = position_enu.y();` | Igual. |
-| 139 | `t.transform.translation.z = position_enu.z();` | Igual. |
-| 141 | `t.transform.rotation.w = q_enu.w();` | Igual. |
-| 142 | `t.transform.rotation.x = q_enu.x();` | Igual. |
-| 143 | `t.transform.rotation.y = q_enu.y();` | Igual. |
-| 144 | `t.transform.rotation.z = q_enu.z();` | Igual. |
-| 146 | `tf_broadcaster_->sendTransform(t);` | Publica `map -> target/base_link`, ya con la posición del target expresada en el origen del interceptor. |
-| 147 | `});` | Cierra la lambda y `create_subscription`. |
-| 149 | `}` | Cierra el constructor. |
-| 151 | `private:` | Igual. |
-| 152 | `rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr subscription_;` | Igual. |
-| 153-154 | ★ `rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr` / `local_position_sub_interceptor_;` | Nuevo: guarda la suscripción a la posición local del interceptor. |
-| 155 | ★ `rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr local_position_sub_target_;` | Nuevo: guarda la suscripción a la posición local del target. |
-| 156 | `std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;` | Igual. |
-| 157 | ★ `rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_pub_;` | Guarda el publisher de velocidad. |
-| 158 | ★ `Eigen::Vector3f _target_velocity_enu{Eigen::Vector3f::Zero()};` | Guarda la última velocidad ENU conocida, inicializada a cero para que el timer no lea basura antes del primer mensaje PX4. |
-| 159 | ★ `rclcpp::TimerBase::SharedPtr timer_;` | Guarda el timer de 100 ms. |
-| 160 | `std::string vehicle_name_;` | Igual. |
-| 161 | ★ `double ref_lat_interceptor_{0.0};` | Nuevo: última latitud de referencia del interceptor recibida. |
-| 162 | ★ `double ref_lon_interceptor_{0.0};` | Nuevo: longitud de referencia del interceptor. |
-| 163 | ★ `float ref_alt_interceptor_{0.0F};` | Nuevo: altitud de referencia del interceptor. |
-| 164 | ★ `bool ref_valid_interceptor_{false};` | Nuevo: si esa referencia ya es válida. |
-| 165 | ★ `double ref_lat_target_{0.0};` | Nuevo: lo mismo para el target. |
-| 166 | ★ `double ref_lon_target_{0.0};` | Nuevo. |
-| 167 | ★ `float ref_alt_target_{0.0F};` | Nuevo. |
-| 168 | ★ `bool ref_valid_target_{false};` | Nuevo. |
-| 169 | `};` | Cierra la clase. |
-| 171 | `int main(int argc, char *argv[])` | Igual estructura que el otro conversor. |
-| 172 | `{` | Abre `main`. |
-| 173 | `std::cout << "Starting target_tf2_odometry frame publisher..." << std::endl;` | Mensaje de arranque, ahora coincide con el nombre del binario (`target_tf2_odometry`). |
-| 174 | `setvbuf(stdout, NULL, _IONBF, BUFSIZ);` | Igual. |
-| 175 | `rclcpp::init(argc, argv);` | Igual. |
-| 176 | `rclcpp::spin(std::make_shared<FramePublisher>());` | Igual. |
-| 178 | `rclcpp::shutdown();` | Igual. |
-| 179 | `return 0;` | Igual. |
-| 180 | `}` | Cierra `main`. |
+| 103 | ★ `std::string missing_refs;` | Nuevo: declara una cadena vacía que irá acumulando qué referencias faltan. |
+| 104 | ★ `if (!ref_valid_interceptor_) {` | Si falta la referencia del interceptor, entra en este bloque. |
+| 105 | ★ `missing_refs += " interceptor";` | Añade `" interceptor"` a la cadena. |
+| 106 | ★ `}` | Cierra el `if` anterior. |
+| 107 | ★ `if (!ref_valid_target_) {` | Si falta la referencia del target, entra en este bloque. |
+| 108 | ★ `missing_refs += missing_refs.empty() ? " target" : " and target";` | Si `missing_refs` seguía vacía (solo falta el target) añade `" target"`; si ya llevaba `" interceptor"` (faltan las dos) añade `" and target"`, para que el aviso quede `of interceptor and target` y no `of interceptor target`. |
+| 109 | ★ `}` | Cierra el `if` anterior. |
+| 110 | ★ `RCLCPP_WARN_THROTTLE(` | Avisa por log, limitado en frecuencia. |
+| 111 | ★ `this->get_logger(), *this->get_clock(), 5000,` | Como mucho un aviso cada 5000 ms. |
+| 112 | ★ `"Waiting for global reference (ref_lat/ref_lon/ref_alt) of%s before publishing "` | Primera parte del texto del aviso: ahora un solo `%s` (antes eran dos), que rellena `missing_refs`. |
+| 113 | ★ `"map -> %s/base_link",` | Segunda parte del texto del aviso. |
+| 114 | ★ `missing_refs.c_str(),` | Rellena el `%s` con la cadena construida arriba (`" interceptor"`, `" target"` o `" interceptor and target"`). |
+| 115 | ★ `vehicle_name_.c_str());` | Nombre del vehículo (`target`) que aparece al final del aviso. |
+| 116 | ★ `return;` | No publica `map -> target/base_link` mientras falte alguna referencia global. |
+| 117 | ★ `}` | Cierra el bloque `if`. |
+| 119 | `// PX4 position is NED, ROS/tf2 expects ENU` | Igual que en el otro conversor. |
+| 120 | `Eigen::Vector3d position_ned(msg->position[0], msg->position[1], msg->position[2]);` | Igual. |
+| 122 | ★ `// NED offset of the target's origin with respect to the interceptor's,` | Nuevo comentario. |
+| 123 | ★ `// so both vehicles end up expressed in the same origin (map = interceptor's)` | Continúa el comentario. |
+| 124 | ★ `Eigen::Vector3d global_position_interceptor(` | Nuevo: arma el vector lat/lon/alt de referencia del interceptor. |
+| 125 | ★ `ref_lat_interceptor_, ref_lon_interceptor_, ref_alt_interceptor_);` | Continúa la construcción del vector. |
+| 126 | ★ `Eigen::Vector3d global_position_target(` | Nuevo: arma el vector lat/lon/alt de referencia del target. |
+| 127 | ★ `ref_lat_target_, ref_lon_target_, ref_alt_target_);` | Continúa la construcción del vector. |
+| 128 | ★ `Eigen::Vector3f origin_offset_ned = px4_ros2::vectorToGlobalPosition(` | Nuevo: calcula el desplazamiento NED del origen del target respecto al del interceptor. |
+| 129 | ★ `global_position_interceptor, global_position_target);` | Argumentos: posición global "ahora" (interceptor) y "siguiente" (target). |
+| 130 | ★ `position_ned += origin_offset_ned.cast<double>();` | Nuevo: suma ese desplazamiento a la posición NED del target, antes de convertirla a ENU. |
+| 132 | `Eigen::Vector3d position_enu = ned_to_enu_local_frame(position_ned);` | Igual que en el otro conversor, pero ahora con la posición ya desplazada al origen del interceptor. |
+| 134 | `// PX4 quaternion is (w, x, y, z), aircraft frame relative to NED` | Igual. |
+| 135 | `Eigen::Quaterniond q_ned(msg->q[0], msg->q[1], msg->q[2], msg->q[3]);` | Igual. |
+| 136 | `Eigen::Quaterniond q_enu = px4_to_ros_orientation(q_ned);` | Igual. |
+| 138 | `geometry_msgs::msg::TransformStamped t;` | Igual. |
+| 139 | `t.header.stamp = this->get_clock()->now();` | Igual. |
+| 140 | `t.header.frame_id = "map";` | Igual. |
+| 141 | `t.child_frame_id = vehicle_name_ + "/base_link";` | Aquí resuelve a `target/base_link`. |
+| 143 | `t.transform.translation.x = position_enu.x();` | Igual que en el otro conversor. |
+| 144 | `t.transform.translation.y = position_enu.y();` | Igual. |
+| 145 | `t.transform.translation.z = position_enu.z();` | Igual. |
+| 147 | `t.transform.rotation.w = q_enu.w();` | Igual. |
+| 148 | `t.transform.rotation.x = q_enu.x();` | Igual. |
+| 149 | `t.transform.rotation.y = q_enu.y();` | Igual. |
+| 150 | `t.transform.rotation.z = q_enu.z();` | Igual. |
+| 152 | `tf_broadcaster_->sendTransform(t);` | Publica `map -> target/base_link`, ya con la posición del target expresada en el origen del interceptor. |
+| 153 | `});` | Cierra la lambda y `create_subscription`. |
+| 155 | `}` | Cierra el constructor. |
+| 157 | `private:` | Igual. |
+| 158 | `rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr subscription_;` | Igual. |
+| 159-160 | ★ `rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr` / `local_position_sub_interceptor_;` | Nuevo: guarda la suscripción a la posición local del interceptor. |
+| 161 | ★ `rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr local_position_sub_target_;` | Nuevo: guarda la suscripción a la posición local del target. |
+| 162 | `std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;` | Igual. |
+| 163 | ★ `rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_pub_;` | Guarda el publisher de velocidad. |
+| 164 | ★ `Eigen::Vector3f _target_velocity_enu{Eigen::Vector3f::Zero()};` | Guarda la última velocidad ENU conocida, inicializada a cero para que el timer no lea basura antes del primer mensaje PX4. |
+| 165 | ★ `rclcpp::TimerBase::SharedPtr timer_;` | Guarda el timer de 100 ms. |
+| 166 | `std::string vehicle_name_;` | Igual. |
+| 167 | ★ `double ref_lat_interceptor_{0.0};` | Nuevo: última latitud de referencia del interceptor recibida. |
+| 168 | ★ `double ref_lon_interceptor_{0.0};` | Nuevo: longitud de referencia del interceptor. |
+| 169 | ★ `float ref_alt_interceptor_{0.0F};` | Nuevo: altitud de referencia del interceptor. |
+| 170 | ★ `bool ref_valid_interceptor_{false};` | Nuevo: si esa referencia ya es válida. |
+| 171 | ★ `double ref_lat_target_{0.0};` | Nuevo: lo mismo para el target. |
+| 172 | ★ `double ref_lon_target_{0.0};` | Nuevo. |
+| 173 | ★ `float ref_alt_target_{0.0F};` | Nuevo. |
+| 174 | ★ `bool ref_valid_target_{false};` | Nuevo. |
+| 175 | `};` | Cierra la clase. |
+| 177 | `int main(int argc, char *argv[])` | Igual estructura que el otro conversor. |
+| 178 | `{` | Abre `main`. |
+| 179 | `std::cout << "Starting target_tf2_odometry frame publisher..." << std::endl;` | Mensaje de arranque, ahora coincide con el nombre del binario (`target_tf2_odometry`). |
+| 180 | `setvbuf(stdout, NULL, _IONBF, BUFSIZ);` | Igual. |
+| 181 | `rclcpp::init(argc, argv);` | Igual. |
+| 182 | `rclcpp::spin(std::make_shared<FramePublisher>());` | Igual. |
+| 184 | `rclcpp::shutdown();` | Igual. |
+| 185 | `return 0;` | Igual. |
+| 186 | `}` | Cierra `main`. |
 
-La callback de odometría (líneas 88-147) hace tres cosas con una sola entrada:
+La callback de odometría (líneas 88-153) hace tres cosas con una sola entrada:
 guarda la velocidad para que el timer, en un ritmo distinto (100 ms fijos), la
 publique por separado (líneas 76-86); si falta la referencia global de
-interceptor o target, avisa y sale sin publicar (líneas 100-111); y si ambas
+interceptor o target, avisa y sale sin publicar (líneas 100-117); y si ambas
 referencias ya son válidas, desplaza la posición del target al origen del
-interceptor antes de publicar el transform (líneas 116-146). Por eso hay dos
+interceptor antes de publicar el transform (líneas 122-152). Por eso hay dos
 "relojes" distintos funcionando en este mismo archivo.
 
 ## 4. `tf2_listener.cpp`

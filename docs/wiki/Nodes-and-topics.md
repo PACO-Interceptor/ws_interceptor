@@ -26,8 +26,7 @@ copias choquen entre sí.
 
 | Ejecutable | Uso |
 | --- | --- |
-| `target_vehicle_odometry_subscriber` | Imprime por pantalla la odometría recibida del tópico sin prefijo. |
-| `interceptor_vehicle_odometry_subscriber` | Imprime por pantalla la odometría recibida del tópico con prefijo `/px4_1/`. |
+| `vehicle_odometry_subscriber` | Imprime por pantalla la odometría recibida; el tópico y el nombre de vehículo de la cabecera dependen de los parámetros `vehicle_name`/`odometry_topic` (el launch lo arranca dos veces, con valores distintos para cada dron). |
 | `tf2_listener` | Muestra la transformación relativa y la velocidad del target una vez por segundo. |
 
 Los suscriptores de odometría son herramientas de inspección, no forman parte
@@ -48,12 +47,12 @@ flowchart LR
     end
 
     O0 --> ITF[interceptor_tf2_odometry]
-    O0 -->|"⚠️ nombre invertido"| TVS["target_vehicle_odometry_subscriber<br/>(diagnóstico)"]
+    O0 --> IVS["interceptor_vehicle_odometry_subscriber<br/>(diagnóstico)"]
 
     O1 --> TTF[target_tf2_odometry]
     L0 --> TTF
     L1 --> TTF
-    O1 -->|"⚠️ nombre invertido"| IVS["interceptor_vehicle_odometry_subscriber<br/>(diagnóstico)"]
+    O1 --> TVS["target_vehicle_odometry_subscriber<br/>(diagnóstico)"]
 
     ITF --> TFI[("map -> interceptor/base_link")]
     TTF --> TFT[("map -> target/base_link")]
@@ -68,12 +67,12 @@ flowchart LR
     O1 --> LISTENER
 ```
 
-Las flechas marcadas con ⚠️ son el detalle que conviene recordar: el
-ejecutable llamado `target_vehicle_odometry_subscriber` en realidad escucha la
-odometría del **interceptor** (instancia 0), y
-`interceptor_vehicle_odometry_subscriber` escucha la del **target** (instancia
-1). Es un desajuste entre nombre de archivo y tópico real, no un error de este
-diagrama.
+Los dos nodos de diagnóstico son el mismo ejecutable,
+`vehicle_odometry_subscriber`, arrancado dos veces: el launch le da a cada uno
+su nombre y el tópico que debe escuchar. Por eso en el diagrama cada uno cuelga
+de la odometría del vehículo que le corresponde. Si lanzas uno a mano con
+`ros2 run`, recuerda pasarle esos parámetros; si no, usará los valores por
+defecto, que son los del interceptor.
 
 ## Tabla de entradas y salidas
 
@@ -98,8 +97,11 @@ Los modos declaran estos parámetros:
 | `target_frame` | `target/base_link` | Frame tf2 que representa al target. |
 | `target_velocity_topic` | `target/velocity` | Tópico de velocidad usado por PN. |
 
-Los conversores declaran `vehicle_name`, con valor `interceptor` o `target`
-según el ejecutable.
+Los conversores tf2 declaran `vehicle_name`, con valor `interceptor` o `target`
+según el ejecutable. `vehicle_odometry_subscriber` declara los mismos dos
+parámetros, `vehicle_name` (por defecto `interceptor`) y `odometry_topic` (por
+defecto `/fmu/out/vehicle_odometry`); el launch se los fija a valores distintos
+en cada una de sus dos instancias.
 
 Los parámetros son configuración, no mensajes. Se consultan al crear el nodo y
 permiten cambiar nombres sin modificar el binario. Para inspeccionarlos:

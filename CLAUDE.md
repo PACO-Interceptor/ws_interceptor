@@ -74,8 +74,10 @@ before touching any node:
    interceptor's origin to the target's position before publishing, so `map` consistently means
    "the interceptor's origin" for both vehicles; until both references are valid it withholds the
    transform and logs a throttled warning instead.
-2. **`target_vehicle_odometry_subscriber`** / **`interceptor_vehicle_odometry_subscriber`** — plain
-   debug listeners that dump raw `VehicleOdometry` fields to stdout; not part of the control loop.
+2. **`vehicle_odometry_subscriber`** — a single parametrized debug listener (`vehicle_name`,
+   `odometry_topic`) that dumps raw `VehicleOdometry` fields to stdout; the launch file starts it
+   twice, once per vehicle, as `target_vehicle_odometry_subscriber` and
+   `interceptor_vehicle_odometry_subscriber`. Not part of the control loop.
 3. **`tf2_listener`** — standalone debug node, logs the `interceptor -> target` tf2 transform plus
    the target's last known NED velocity once a second. Commented out of the default launch file.
 4. **`pursuit_mode`** / **`PN_mode`** — the actual guidance logic, each a

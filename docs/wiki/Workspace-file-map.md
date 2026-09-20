@@ -1,11 +1,11 @@
 # Mapa completo de archivos y dependencias
 
 Esta página cubre **todos los archivos que forman parte de `src/` y `.github/`**.
-El inventario actual contiene 592 archivos:
+El inventario actual contiene 591 archivos:
 
 | Zona | Archivos | Propósito |
 | --- | ---: | --- |
-| `src/interceptor` | 13 | Código propio del proyecto. |
+| `src/interceptor` | 12 | Código propio del proyecto. |
 | `src/px4_msgs` | 289 | Definiciones ROS 2 equivalentes a mensajes, servicios y acciones de PX4. |
 | `src/px4_ros_com` | 28 | Ejemplos y utilidades de comunicación entre ROS 2 y PX4. |
 | `src/px4-ros2-interface-lib` | 258 | Biblioteca vendorizada para registrar modos PX4 y enviar setpoints. |
@@ -14,7 +14,7 @@ El inventario actual contiene 592 archivos:
 
 ## Cómo consultar este mapa
 
-No hace falta abrir los 592 archivos en orden: el número indica cuántos archivos
+No hace falta abrir los 591 archivos en orden: el número indica cuántos archivos
 hay, no una secuencia de lectura. Empieza por `src/interceptor`, porque es el
 código de este proyecto, y después consulta solo la dependencia que necesites
 entender. Cuando veas una carpeta, piensa que es una caja con un propósito;
@@ -35,11 +35,11 @@ Una dependencia vendorizada no se debe modificar para arreglar un comportamiento
 del interceptor. Primero se debe entender qué interfaz ofrece y cambiar solo
 `src/interceptor`, salvo que el objetivo sea actualizar esa dependencia.
 
-## `src/interceptor`: los 13 archivos propios
+## `src/interceptor`: los 12 archivos propios
 
 | Archivo | Qué hace |
 | --- | --- |
-| [`CMakeLists.txt`](../../src/interceptor/CMakeLists.txt) | Declara dependencias, compila los siete ejecutables e instala binarios y launch. |
+| [`CMakeLists.txt`](../../src/interceptor/CMakeLists.txt) | Declara dependencias, compila los seis ejecutables e instala binarios y launch. |
 | [`package.xml`](../../src/interceptor/package.xml) | Declara el nombre, versión, licencia y dependencias ROS 2 del paquete. |
 | [`README.md`](../../src/interceptor/README.md) | Guía breve de instalación y enlaces oficiales. |
 | [`LICENSE`](../../src/interceptor/LICENSE) | Condiciones legales del paquete propio. |
@@ -50,8 +50,7 @@ del interceptor. Primero se debe entender qué interfaz ofrece y cambiar solo
 | [`src/pursuit_mode.cpp`](../../src/interceptor/src/pursuit_mode.cpp) | Modo de persecución pura basado en posición. |
 | [`src/PN_mode.cpp`](../../src/interceptor/src/PN_mode.cpp) | Modo de navegación proporcional basado en posición y velocidad. |
 | [`src/tf2_listener.cpp`](../../src/interceptor/src/tf2_listener.cpp) | Herramienta para imprimir transformaciones relativas. |
-| [`src/target_vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/target_vehicle_odometry_subscriber.cpp) | Imprime una odometría para diagnóstico. |
-| [`src/interceptor_vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/interceptor_vehicle_odometry_subscriber.cpp) | Imprime otra odometría para diagnóstico. |
+| [`src/vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/vehicle_odometry_subscriber.cpp) | Imprime la odometría de un vehículo para diagnóstico; el launch lo arranca dos veces con parámetros `vehicle_name`/`odometry_topic` distintos. |
 
 La explicación línea por línea de estos archivos está en
 [Lectura guiada del código](Code-walkthrough.md).

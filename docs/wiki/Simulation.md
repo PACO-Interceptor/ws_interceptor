@@ -8,6 +8,46 @@ El launch del proyecto conecta ROS 2 con dos instancias PX4 SITL. PX4 SITL
 simula el autopiloto y el vehículo; el Micro XRCE-DDS Agent hace de puente
 entre PX4 y ROS 2.
 
+## Antes de empezar
+
+Esta página da por hecho que ya has seguido
+[Instalación y compilación](Installation-and-build.md) y que tienes:
+
+- el workspace **compilado** (`colcon build --symlink-install` sin errores);
+- **PX4** clonado en `~/PX4-Autopilot`, fijado en el commit que indica esa
+  página y compilado al menos una vez;
+- el **Micro XRCE-DDS Agent** compilado en `~/Micro-XRCE-DDS-Agent`;
+- **QGroundControl v5.1.4** descargado.
+
+Necesitarás cuatro terminales: una por cada pieza que se queda ejecutándose.
+
+## Resumen rápido
+
+Los comandos, en orden, para tenerlo todo en marcha. Cada bloque va en su
+propia terminal y se explica en detalle más abajo.
+
+```bash
+# 1. Interceptor (instancia 0). Abre también la ventana de Gazebo
+cd ~/PX4-Autopilot
+make px4_sitl gz_x500
+
+# 2. Target (instancia 1), 20 m al norte
+cd ~/PX4-Autopilot
+GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_default/bin/px4 -i 1
+
+# 3. Nodos del proyecto, con el modo de guiado elegido
+cd ~/ws_interceptor          # la ruta donde clonaste el workspace
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 launch interceptor interceptor.launch.py modo:=pn
+
+# 4. Estación de tierra
+~/QGroundControl-x86_64.AppImage
+```
+
+Después, desde QGroundControl: despega los dos drones, manda el target a otro
+punto y elige **PN mode** en el interceptor (ver [Volar](#volar)).
+
 ## Qué se está simulando
 
 SITL no es solo una ventana con un modelo 3D. Ejecuta el software de PX4 y sus
@@ -184,9 +224,11 @@ ros2 run interceptor target_tf2_odometry
 No ejecutes dos copias del mismo nodo sin una razón clara: podrían publicar el
 mismo transform o consumir recursos duplicados.
 
-Para detener una prueba, detén primero el launch y después las instancias PX4.
-Si dejas procesos antiguos activos, la siguiente prueba puede recibir mensajes
-duplicados o fallar al abrir puertos.
+## Parar la simulación
+
+Detén primero el launch y después las instancias PX4, cada una con Ctrl-C en su
+terminal. Si dejas procesos antiguos activos, la siguiente prueba puede recibir
+mensajes duplicados o fallar al abrir puertos.
 
 Al pulsar Ctrl-C, el launch tarda unos **5 segundos** en cerrarse. Es a
 propósito: el modo de vuelo necesita ese margen para darse de baja en PX4 antes

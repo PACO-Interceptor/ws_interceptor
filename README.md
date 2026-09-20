@@ -37,14 +37,42 @@ Para compilar el paquete propio junto con sus dependencias:
 colcon build --packages-up-to interceptor --symlink-install
 ```
 
-## Ejecutar
+## Ejecutar la simulación
+
+Hacen falta cuatro terminales, una por pieza. Los detalles y qué debería verse
+en cada paso están en
+[Ejecución de la simulación](docs/wiki/Simulation.md).
 
 ```bash
+# 1. Interceptor (instancia 0). Abre también la ventana de Gazebo
+cd ~/PX4-Autopilot
+make px4_sitl gz_x500
+
+# 2. Target (instancia 1), 20 m al norte
+cd ~/PX4-Autopilot
+GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_default/bin/px4 -i 1
+
+# 3. Nodos del proyecto, con el modo de guiado elegido
+cd ~/ws_interceptor          # la ruta donde clonaste el workspace
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
 ros2 launch interceptor interceptor.launch.py modo:=pn
+
+# 4. Estación de tierra
+~/QGroundControl-x86_64.AppImage
 ```
 
-El argumento `modo` es opcional y solo acepta `pn` o `pursuit`: elige qué
-modo de guiado se registra en PX4 (solo se lanza uno). Si se omite, vale `pn`. El lanzador espera encontrar Micro XRCE-DDS Agent en `~/Micro-XRCE-DDS-Agent` y que los vehículos PX4 estén ejecutándose. Los nodos individuales también pueden iniciarse con `ros2 run interceptor <ejecutable>`.
+En QGroundControl: despega el target (vehículo 2), mándalo a otro punto con
+*Go to location*, despega el interceptor (vehículo 1) y elígele **PN mode** o
+**Pursuit Intercept** en el selector de modo.
+
+El argumento `modo` es opcional y solo acepta `pn` o `pursuit`: elige qué modo
+de guiado se registra en PX4, ya que solo se lanza uno. Si se omite, vale `pn`.
+Sin QGroundControl conectado, PX4 no deja armar. Los nodos individuales también
+pueden iniciarse con `ros2 run interceptor <ejecutable>`.
+
+Para parar: Ctrl-C primero en el launch, que tarda unos 5 segundos a propósito,
+y después en las instancias PX4.
 
 ## Estructura
 

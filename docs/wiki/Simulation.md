@@ -19,7 +19,23 @@ Esta página da por hecho que ya has seguido
 - el **Micro XRCE-DDS Agent** compilado en `~/Micro-XRCE-DDS-Agent`;
 - **QGroundControl v5.1.4** descargado.
 
-Necesitarás cuatro terminales: una por cada pieza que se queda ejecutándose.
+Necesitarás cuatro terminales: una por cada pieza que se queda ejecutándose,
+más alguna suelta para comprobar cosas.
+
+<a id="cargar-el-entorno"></a>
+**Cargar el entorno.** Cada terminal nueva empieza sin saber nada de ROS 2 ni
+de este workspace, y lo que se carga en una no vale para las demás. Antes de
+usar cualquier comando `ros2`, en esa terminal:
+
+```bash
+cd ~/ws_interceptor          # la ruta donde clonaste el workspace
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+```
+
+La primera línea carga ROS 2 y la segunda, este workspace (por eso hay que
+estar dentro de su carpeta: `install/setup.bash` es una ruta relativa). Las
+terminales de PX4 no lo necesitan: PX4 no es un programa de ROS 2.
 
 ## Resumen rápido
 
@@ -141,7 +157,7 @@ binario de PX4 que compiló el paso anterior. Cada parte de la orden importa:
 
 En otra terminal, **dentro de la carpeta del workspace** (los dos pasos
 anteriores te dejaron en la de PX4, y una terminal nueva empieza en tu carpeta
-personal):
+personal). Es lo que explica [Cargar el entorno](#cargar-el-entorno):
 
 ```bash
 cd ~/ws_interceptor          # la ruta donde clonaste el workspace
@@ -187,9 +203,8 @@ Mientras QGroundControl no esté abierto, PX4 no deja armar
 
 ## Cómo saber si el arranque funcionó
 
-En una terminal nueva, desde la carpeta del workspace y después de cargar el
-entorno (`source /opt/ros/jazzy/setup.bash` y `source install/setup.bash`, como
-en el paso 3):
+En una terminal nueva, con el entorno cargado (ver
+[Cargar el entorno](#cargar-el-entorno)):
 
 ```bash
 ros2 node list
@@ -208,7 +223,9 @@ No hay que preparar nada más. Cada PX4 mide su posición desde el punto donde
 arrancó, así que el interceptor y el target usan orígenes distintos, pero
 `target_tf2_odometry` lo corrige solo: coloca al target en el mismo marco que
 el interceptor antes de publicarlo (ver
-[Arquitectura y flujo de datos](Architecture.md)). Puedes confirmarlo con:
+[Arquitectura y flujo de datos](Architecture.md)). Puedes confirmarlo en una
+terminal nueva, con el entorno cargado (ver
+[Cargar el entorno](#cargar-el-entorno)):
 
 ```bash
 ros2 run tf2_ros tf2_echo map target/base_link
@@ -237,6 +254,10 @@ vuelve a perseguirlo y el aviso saldrá de nuevo en el siguiente alcance.
 Para terminar, cambia el interceptor a *Hold* o *Land*.
 
 ## Ejecutar un nodo individual
+
+Cada nodo va en su propia terminal, con el entorno cargado (ver
+[Cargar el entorno](#cargar-el-entorno)). Sirve para probar una pieza suelta
+sin levantar todo el launch; PX4 tiene que estar corriendo igualmente.
 
 ```bash
 ros2 run interceptor target_tf2_odometry

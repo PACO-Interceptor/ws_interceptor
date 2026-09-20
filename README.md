@@ -23,6 +23,9 @@ El repositorio ya incluye el paquete propio `interceptor` y las dependencias PX4
 
 ## Instalar dependencias y compilar
 
+Desde la carpeta del workspace (la del `cd` anterior; si abres una terminal
+nueva, vuelve a entrar en ella con `cd ~/ws_interceptor`):
+
 ```bash
 source /opt/ros/jazzy/setup.bash
 rosdep update
@@ -35,6 +38,14 @@ Para compilar el paquete propio junto con sus dependencias:
 
 ```bash
 colcon build --packages-up-to interceptor --symlink-install
+```
+
+Cada terminal nueva que vaya a usar `ros2` necesita cargar el entorno otra vez,
+desde la carpeta del workspace:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
 ```
 
 ## Ejecutar la simulación

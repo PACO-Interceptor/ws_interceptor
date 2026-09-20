@@ -16,17 +16,8 @@ find_package(px4_ros_com REQUIRED)
 find_package(px4_ros2_cpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
-add_executable(target_vehicle_odometry_subscriber src/target_vehicle_odometry_subscriber.cpp)
-ament_target_dependencies(target_vehicle_odometry_subscriber
-  rclcpp
-  tf2_ros
-  tf2
-  geometry_msgs
-  px4_msgs
-  sensor_msgs
-)
-add_executable(interceptor_vehicle_odometry_subscriber src/interceptor_vehicle_odometry_subscriber.cpp)
-ament_target_dependencies(interceptor_vehicle_odometry_subscriber
+add_executable(vehicle_odometry_subscriber src/vehicle_odometry_subscriber.cpp)
+ament_target_dependencies(vehicle_odometry_subscriber
   rclcpp
   tf2_ros
   tf2
@@ -54,6 +45,7 @@ ament_target_dependencies(target_tf2_odometry
   geometry_msgs
   px4_msgs
   px4_ros_com
+  px4_ros2_cpp
   sensor_msgs
 )
 
@@ -101,9 +93,8 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS
-  target_vehicle_odometry_subscriber
+  vehicle_odometry_subscriber
   target_tf2_odometry
-  interceptor_vehicle_odometry_subscriber
   interceptor_tf2_odometry
   tf2_listener
   pursuit_mode

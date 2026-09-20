@@ -43,8 +43,8 @@ colcon build --packages-up-to interceptor --symlink-install
 ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
 
-El argumento `modo` es obligatorio y solo acepta `pn` o `pursuit`: elige qué
-modo de guiado se registra en PX4 (solo se lanza uno). El lanzador espera encontrar Micro XRCE-DDS Agent en `~/Micro-XRCE-DDS-Agent` y que los vehículos PX4 estén ejecutándose. Los nodos individuales también pueden iniciarse con `ros2 run interceptor <ejecutable>`.
+El argumento `modo` es opcional y solo acepta `pn` o `pursuit`: elige qué
+modo de guiado se registra en PX4 (solo se lanza uno). Si se omite, vale `pn`. El lanzador espera encontrar Micro XRCE-DDS Agent en `~/Micro-XRCE-DDS-Agent` y que los vehículos PX4 estén ejecutándose. Los nodos individuales también pueden iniciarse con `ros2 run interceptor <ejecutable>`.
 
 ## Estructura
 

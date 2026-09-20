@@ -105,7 +105,8 @@ source install/setup.bash
 ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
 
-El argumento `modo` es obligatorio y solo acepta `pn` o `pursuit`. El launch
+El argumento `modo` es opcional y solo acepta `pn` o `pursuit`; si se omite,
+vale `pn`. El launch
 inicia el agente con `udp4` en el puerto `8888`, los conversores de
 odometría, los nodos de diagnóstico y el único nodo de modo de vuelo elegido
 con `modo`. `udp4` significa comunicación UDP usando IPv4: una forma de enviar

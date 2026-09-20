@@ -59,7 +59,7 @@ colcon build --packages-up-to interceptor --symlink-install
 ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
 
-El argumento `modo` es obligatorio (`pn` o `pursuit`): solo se lanza el modo de guiado elegido.
+El argumento `modo` es opcional (`pn` por defecto, o `pursuit`): solo se lanza el modo de guiado elegido.
 
 O ejecutar un nodo individual, por ejemplo:
 

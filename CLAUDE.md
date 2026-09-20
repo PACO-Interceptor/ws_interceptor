@@ -39,7 +39,7 @@ Run everything:
 ```bash
 ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
-`modo` is a required launch argument, `pn` or `pursuit`: both mode nodes are in the
+`modo` is an optional launch argument, `pn` (the default) or `pursuit`: both mode nodes are in the
 `LaunchDescription`, each behind an `IfCondition`, so only the chosen one is started. Or a single
 node:
 `ros2 run interceptor <executable>` (executable names = source file names, e.g.

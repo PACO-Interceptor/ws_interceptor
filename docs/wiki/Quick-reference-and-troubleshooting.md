@@ -7,6 +7,13 @@ capa cada vez y no cambiar muchas cosas simultáneamente.
 
 ## Comandos habituales
 
+Todos los comandos `ros2` de esta página se ejecutan en una terminal con el
+entorno cargado: desde la carpeta del workspace, `source
+/opt/ros/jazzy/setup.bash` y `source install/setup.bash` (ver
+[Cargar el entorno](Simulation.md#cargar-el-entorno)). Como el launch y los
+nodos ocupan su propia terminal, lo normal es abrir una aparte solo para
+diagnosticar.
+
 ```bash
 # Ver nodos y tópicos activos
 ros2 node list

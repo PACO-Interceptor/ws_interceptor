@@ -133,9 +133,12 @@ make px4_sitl gz_x500
 eso no se usa `-b` al clonar). `git submodule update --init --recursive`
 descarga los submódulos de git que usa PX4 en las versiones de ese commit. El
 script `Tools/setup/ubuntu.sh` instala las herramientas de compilación y de
-simulación (incluida Gazebo). El último comando compila y arranca una vez de
-prueba con el modelo `gz_x500`, el mismo que se usa en
-[Simulation.md](Simulation.md).
+simulación (incluida Gazebo); la guía oficial de PX4 recomienda reiniciar el
+ordenador cuando termina, antes de compilar. El último comando compila y
+arranca una vez de prueba con el modelo `gz_x500`, el mismo que se usa en
+[Simulation.md](Simulation.md); la primera compilación de PX4 tarda bastantes
+minutos y abre la ventana de Gazebo al terminar. Ciérrala con Ctrl-C en esa
+misma terminal antes de seguir.
 
 #### Micro XRCE-DDS Agent
 

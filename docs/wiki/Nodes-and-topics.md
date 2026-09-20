@@ -10,7 +10,7 @@ código.
 | Ejecutable | Responsabilidad |
 | --- | --- |
 | `interceptor_tf2_odometry` | Convierte la odometría de la instancia 0 y publica el frame del interceptor. |
-| `target_tf2_odometry` | Convierte la odometría de la instancia 1, la desplaza al origen del interceptor (usando `vehicle_local_position` de las dos instancias) y publica el frame del target y `target/velocity`. |
+| `target_tf2_odometry` | Convierte la odometría de la instancia 1, la desplaza al origen del interceptor (usando `vehicle_local_position_v1` de las dos instancias) y publica el frame del target y `target/velocity`. |
 | `pursuit_mode` | Modo de persecución pura basado en la posición. |
 | `PN_mode` | Modo de navegación proporcional basado en posición y velocidad. |
 
@@ -39,11 +39,11 @@ del cálculo de control. `tf2_listener` está comentado en el launch por defecto
 flowchart LR
     subgraph PX0["PX4 interceptor (instancia 0)"]
         O0["/fmu/out/vehicle_odometry"]
-        L0["/fmu/out/vehicle_local_position"]
+        L0["/fmu/out/vehicle_local_position_v1"]
     end
     subgraph PX1["PX4 target (instancia 1)"]
         O1["/px4_1/fmu/out/vehicle_odometry"]
-        L1["/px4_1/fmu/out/vehicle_local_position"]
+        L1["/px4_1/fmu/out/vehicle_local_position_v1"]
     end
 
     O0 --> ITF[interceptor_tf2_odometry]
@@ -78,7 +78,7 @@ defecto, que son los del interceptor.
 
 | Nodo | Entrada | Salida |
 | --- | --- | --- |
-| `target_tf2_odometry` | `/px4_1/fmu/out/vehicle_odometry`, `/fmu/out/vehicle_local_position`, `/px4_1/fmu/out/vehicle_local_position` | `map -> target/base_link`, `target/velocity` |
+| `target_tf2_odometry` | `/px4_1/fmu/out/vehicle_odometry`, `/fmu/out/vehicle_local_position_v1`, `/px4_1/fmu/out/vehicle_local_position_v1` | `map -> target/base_link`, `target/velocity` |
 | `interceptor_tf2_odometry` | `/fmu/out/vehicle_odometry` | `map -> interceptor/base_link` |
 | `pursuit_mode` | tf2 target, odometría propia | setpoint de trayectoria |
 | `PN_mode` | tf2 target, odometría propia, `target/velocity` | setpoint de trayectoria |
@@ -88,14 +88,27 @@ defecto, que son los del interceptor.
 La tabla es una vista de dependencias: si a un nodo le falta una entrada, el
 problema suele estar en quien debería producir ese dato, no en el nodo mismo.
 
+### Por qué unos tópicos llevan `_v1` y otros no
+
+Muchos mensajes de PX4 llevan un número de versión (`MESSAGE_VERSION`) que
+forma parte del nombre del tópico, como se explica en
+[Instalación y compilación](Installation-and-build.md#px4). Con el `px4_msgs`
+vendorizado, `VehicleLocalPosition` va por la versión 1 y se publica en
+`/fmu/out/vehicle_local_position_v1`, mientras que `VehicleOdometry` está en la
+versión 0 y se publica sin sufijo. Por eso `target_tf2_odometry` no escribe el
+sufijo a mano: lo calcula con `px4_ros2::getMessageNameVersion` a partir del
+tipo del mensaje, y así sigue funcionando si esa versión cambia. Si copias un
+nombre de tópico de esta página y `ros2 topic echo` no muestra nada, comprueba
+primero el nombre exacto con `ros2 topic list | grep vehicle_local_position`.
+
 ## Parámetros
 
-Los modos declaran estos parámetros:
+Los modos declaran estos parámetros (`target_frame` los dos; `target_velocity_topic` solo PN):
 
 | Parámetro | Valor por defecto | Uso |
 | --- | --- | --- |
 | `target_frame` | `target/base_link` | Frame tf2 que representa al target. |
-| `target_velocity_topic` | `target/velocity` | Tópico de velocidad usado por PN. |
+| `target_velocity_topic` | `target/velocity` | Tópico de velocidad; solo lo declara `PN_mode`, que es el único que necesita la velocidad. |
 
 Los conversores tf2 declaran `vehicle_name`, con valor `interceptor` o `target`
 según el ejecutable. `vehicle_odometry_subscriber` declara los mismos dos

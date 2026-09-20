@@ -138,16 +138,18 @@ Archivo: [`src/interceptor/README.md`](../../src/interceptor/README.md)
 
 Es la puerta de entrada al paquete para quien lo clona por primera vez.
 Resume qué es (un paquete ROS 2 `ament_cmake` para seguir e interceptar un
-target usando datos de odometría PX4), qué sistema operativo y herramientas
-requiere (Ubuntu 24.04, ROS 2 Jazzy, PX4 toolchain), y qué tres paquetes
-externos debe contener el workspace además de este (`px4_msgs`,
-`px4_ros_com`, `px4-ros2-interface-lib`, con enlaces a sus repositorios
-oficiales). A partir de ahí da los comandos para crear el workspace, clonar
-esas dependencias, instalarlas, compilar y ejecutar el paquete; esos mismos
+target usando datos de odometría PX4), qué sistema operativo y versiones
+requiere (Ubuntu 24.04, ROS 2 Jazzy y, para simular, las versiones fijadas de
+PX4, del Agent y de QGroundControl), y qué tres paquetes externos usa
+(`px4_msgs`, `px4_ros_com`, `px4-ros2-interface-lib`, con enlaces a sus
+repositorios oficiales), aclarando que ya vienen vendorizados dentro de `src/`
+y no hay que clonarlos aparte. A partir de ahí da los comandos para clonar el
+workspace, instalar dependencias, compilar y ejecutar el paquete; esos mismos
 comandos ya se explican con detalle, orden y contexto en
-[Instalación y compilación](Installation-and-build.md), así que aquí no se
-repiten uno por uno. Termina enlazando la documentación oficial de ROS 2 y
-PX4 para quien quiera profundizar sin confundirla con este código.
+[Instalación y compilación](Installation-and-build.md) y en
+[Ejecución de la simulación](Simulation.md), así que aquí no se repiten uno
+por uno. Termina enlazando la documentación oficial de ROS 2 y PX4 para quien
+quiera profundizar sin confundirla con este código.
 
 ## 4. `src/interceptor/package.xml`
 
@@ -306,7 +308,7 @@ número de línea coincide.
 | 65 | `output='log',` | Su salida va a los logs, no a pantalla. |
 | 66 | `)` | Cierra el bloque de este nodo. |
 | 68 | `target_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del target. |
-| 69 | `package='interceptor',` | Igual que la línea 56. |
+| 69 | `package='interceptor',` | Igual que la línea 58. |
 | 70 | `executable='target_tf2_odometry',` | Ejecutable que convierte la odometría del target y publica `target/base_link` y `target/velocity`. |
 | 71 | `output='screen',` | Aquí la salida sí va directamente a la terminal (`screen`), a diferencia de los diagnósticos. |
 | 72 | `)` | Cierra el bloque. |

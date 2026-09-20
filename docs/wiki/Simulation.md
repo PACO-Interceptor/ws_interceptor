@@ -15,7 +15,8 @@ Esta página da por hecho que ya has seguido
 
 - el workspace **compilado** (`colcon build --symlink-install` sin errores);
 - **PX4** clonado en `~/PX4-Autopilot`, fijado en el commit que indica esa
-  página y compilado al menos una vez;
+  página y compilado al menos una vez (si lo clonaste en otro sitio, cambia esa
+  ruta en los comandos de los pasos 1 y 2);
 - el **Micro XRCE-DDS Agent** compilado en `~/Micro-XRCE-DDS-Agent`;
 - **QGroundControl v5.1.4** descargado.
 
@@ -293,6 +294,18 @@ de que se cierre el agente, que es quien lleva ese aviso. El agente ignora el
 primer Ctrl-C y se cierra cuando el launch insiste, cinco segundos después. Si
 se cerrara a la vez que el resto, PX4 se quedaría con un modo registrado que ya
 no existe, y al relanzar aparecerían avisos de modos sin respuesta.
+
+La ventana de Gazebo la arrancó la instancia `0`, así que se cierra al parar
+esa terminal; si se queda abierta, ciérrala tú. QGroundControl es un programa
+aparte: ciérralo desde su ventana cuando ya no lo necesites. Para comprobar que
+no queda nada colgado:
+
+```bash
+pgrep -a -f 'px4|gz sim|MicroXRCEAgent'
+```
+
+Si sigue apareciendo algo después de cerrar todas las terminales, ciérralo con
+`pkill -f` y el nombre que aparezca antes de volver a empezar.
 
 ## Nota sobre los modos
 

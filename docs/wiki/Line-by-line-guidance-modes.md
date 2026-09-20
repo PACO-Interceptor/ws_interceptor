@@ -231,7 +231,7 @@ exactamente qué añade PN sobre Pursuit: la suscripción de velocidad
 (líneas 42-59), la condición de armado que además exige velocidad válida
 (línea 71), `v_rel` (línea 90), el cálculo de `a_cmd` (líneas 102-118) y que
 `a_cmd` sí viaja en el `update()` final (línea 131). El bloque de alcance
-(`onActivate`, líneas 92-100) es idéntico al de Pursuit. Todo lo demás —
+—`onActivate` (línea 66) y las líneas 92-100— es idéntico al de Pursuit. Todo lo demás —
 estructura de la clase, `updateTargetPosition`, `main`— es el mismo patrón
 con nombres distintos.
 

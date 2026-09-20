@@ -89,11 +89,17 @@ Imaginemos que el target se mueve unos centímetros:
    `px4_ros2`) y calcula una velocidad —y, en PN, también una aceleración.
 8. `TrajectorySetpointType` entrega ese setpoint a PX4, y su controlador
    intenta seguirlo.
-9. Cuando la distancia al target baja de 1 m, el modo se da por completado.
+9. Cuando la distancia al target baja de 1 m, el modo avisa una vez
+   (`Target reached. Stopping pursuit.`) y se da por completado.
 
-El ciclo (pasos 1-8) se repite continuamente hasta que ocurre el paso 9. No
-existe una única función `followTarget()`; el comportamiento emerge de varios
-callbacks, timers y controladores.
+El ciclo (pasos 1-8) se repite continuamente. El paso 9 no lo detiene: el modo
+sigue activo y `updateSetpoint` se sigue ejecutando, solo que deja de generar
+setpoints mientras el interceptor esté dentro de ese metro. Si el target se
+aleja, la persecución se reanuda sola y el aviso volverá a salir en el
+siguiente acercamiento (ver [Modos de guiado](Guidance-modes.md)). Quien decide
+de verdad cuándo termina el vuelo es PX4 o quien esté a los mandos, cambiando
+de modo. No existe una única función `followTarget()`; el comportamiento emerge
+de varios callbacks, timers y controladores.
 
 ## Marcos de referencia
 
@@ -168,8 +174,8 @@ En este proyecto, `map` es el origen **del interceptor**:
 sistemas: con el target arrancado 20 m al norte, tf2 lo situaría igualmente en
 (0, 0) y los modos de guiado creerían tenerlo encima nada más empezar.
 
-Por eso `target_tf2_odometry` se suscribe también a `vehicle_local_position` de
-las **dos** instancias, calcula el desplazamiento entre los dos orígenes a
+Por eso `target_tf2_odometry` se suscribe también a `vehicle_local_position_v1`
+de las **dos** instancias, calcula el desplazamiento entre los dos orígenes a
 partir de sus coordenadas geográficas y se lo suma a la posición del target
 antes de publicar el transform. El cálculo se rehace con cada mensaje de
 odometría, así que si un EKF reinicia su origen en pleno vuelo, la corrección se

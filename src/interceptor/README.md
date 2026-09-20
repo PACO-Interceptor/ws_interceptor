@@ -6,11 +6,14 @@ Paquete ROS2 (ament_cmake) para el seguimiento e interceptación de un vehículo
 
 - Ubuntu 24.04 (Noble)
 - ROS2 Jazzy
-- PX4 toolchain
+- Para ejecutar la simulación: PX4 en el commit `14b3f44081`, Micro XRCE-DDS Agent `v2.4.3` y
+  QGroundControl `v5.1.4` (versiones probadas juntas; ver la
+  [guía de instalación](../../docs/wiki/Installation-and-build.md))
 
 ## Dependencias
 
-Este paquete debe compilarse dentro de un workspace ROS2 que además contenga estos paquetes en `src/`:
+Este paquete se compila dentro del workspace `ws_interceptor`, que ya incluye en `src/` los tres
+paquetes PX4 que necesita, vendorizados (no hay que clonarlos aparte):
 
 - [px4_msgs](https://github.com/PX4/px4_msgs.git)
 - [px4_ros_com](https://github.com/PX4/px4_ros_com.git)
@@ -21,19 +24,15 @@ Dependencias ROS2 estándar (se instalan con `rosdep`): `rclcpp`, `tf2_ros`, `tf
 ## Preparar el workspace
 
 ```bash
-mkdir -p ~/ws_interceptor/src
-cd ~/ws_interceptor/src
-
-git clone git@github.com:Deireb/ws_interceptor.git interceptor
-git clone https://github.com/PX4/px4_msgs.git
-git clone https://github.com/PX4/px4_ros_com.git
-git clone https://github.com/Auterion/px4-ros2-interface-lib.git
+git clone https://github.com/Deireb/ws_interceptor.git
+cd ws_interceptor
 ```
 
 ## Instalar dependencias
 
+Desde la carpeta del workspace:
+
 ```bash
-cd ~/ws_interceptor
 source /opt/ros/jazzy/setup.bash
 rosdep update
 rosdep install --from-paths src --ignore-src -r -y
@@ -42,7 +41,6 @@ rosdep install --from-paths src --ignore-src -r -y
 ## Compilar
 
 ```bash
-cd ~/ws_interceptor
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -54,6 +52,10 @@ colcon build --packages-up-to interceptor --symlink-install
 ```
 
 ## Ejecutar
+
+El launch no arranca PX4: las dos instancias SITL se lanzan a mano antes, cada una en su terminal
+(ver [Ejecución de la simulación](../../docs/wiki/Simulation.md)). Con el entorno cargado
+(`source /opt/ros/jazzy/setup.bash` y `source install/setup.bash` desde la carpeta del workspace):
 
 ```bash
 ros2 launch interceptor interceptor.launch.py modo:=pn

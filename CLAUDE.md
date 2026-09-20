@@ -28,12 +28,12 @@ colcon test --packages-select interceptor --event-handlers console_direct+
 colcon test-result --verbose
 ```
 
-Tests are `ament_lint_auto`/`ament_lint_common` only (uncrustify + cpplint for C++, flake8 + pep257
-for the Python launch file) — there are no unit tests, and no custom lint config files, so linting
-follows ROS 2 ament defaults. CI (`.github/workflows`, actually stored under
-`src/interceptor/.github/workflows`) runs this same build+test sequence on `ros:jazzy-ros-base` for
-pushes/PRs to `main`/`master`; a release workflow tags and publishes GitHub releases after CI
-succeeds on `main`.
+Tests are `ament_lint_auto`/`ament_lint_common` only (uncrustify, cppcheck, lint_cmake and xmllint
+for C++/CMake/XML, flake8 + pep257 for the Python launch file; `copyright` and `cpplint` are
+explicitly skipped in `CMakeLists.txt`) — there are no unit tests, and no custom lint config files,
+so linting follows ROS 2 ament defaults. CI (`.github/workflows` at the repo root) runs this same
+build+test sequence on `ros:jazzy-ros-base` for pushes/PRs to `main`/`master`; a release workflow
+tags and publishes GitHub releases after CI succeeds on `main`.
 
 Run everything:
 ```bash
@@ -69,11 +69,12 @@ before touching any node:
    `map -> {target,interceptor}/base_link`. The target's node additionally republishes its ENU
    linear velocity on `target/velocity` (`TwistStamped`, 10 Hz) since tf2 transforms carry no
    velocity. Because each PX4 instance measures its local position from its own startup origin,
-   `target_tf2_odometry` also subscribes to `vehicle_local_position` of both instances
-   (`ref_lat`/`ref_lon`/`ref_alt`) and adds the NED offset between the target's and the
-   interceptor's origin to the target's position before publishing, so `map` consistently means
-   "the interceptor's origin" for both vehicles; until both references are valid it withholds the
-   transform and logs a throttled warning instead.
+   `target_tf2_odometry` also subscribes to `vehicle_local_position_v1` of both instances for
+   `ref_lat`/`ref_lon`/`ref_alt` (the `_v1` suffix comes from the message's `MESSAGE_VERSION` and
+   is appended at runtime by `px4_ros2::getMessageNameVersion`), and adds the NED offset between
+   the target's and the interceptor's origin to the target's position before publishing, so `map`
+   consistently means "the interceptor's origin" for both vehicles; until both references are
+   valid it withholds the transform and logs a throttled warning instead.
 2. **`vehicle_odometry_subscriber`** — a single parametrized debug listener (`vehicle_name`,
    `odometry_topic`) that dumps raw `VehicleOdometry` fields to stdout; the launch file starts it
    twice, once per vehicle, as `target_vehicle_odometry_subscriber` and

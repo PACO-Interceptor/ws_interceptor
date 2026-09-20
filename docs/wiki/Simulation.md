@@ -167,7 +167,19 @@ se quiere probar con simulación.
 
 ### 4. Abrir QGroundControl
 
-Abre QGroundControl v5.1.4 (ver [Instalación y compilación](Installation-and-build.md)).
+En otra terminal, ejecuta el AppImage que descargaste en
+[Instalación y compilación](Installation-and-build.md), con la ruta donde lo
+guardaste:
+
+```bash
+~/QGroundControl-x86_64.AppImage
+```
+
+También puedes abrirlo con doble clic desde el explorador de archivos, si le
+diste permiso de ejecución. La primera vez pregunta por el tipo de vehículo y
+las unidades: elige *PX4 Pro*, *Multi-Rotor* y *Metric System*, para que las
+distancias coincidan con las de esta wiki.
+
 Se conecta solo a las dos instancias por UDP (puerto `14550`), sin configurar
 nada: el interceptor aparece como vehículo `1` y el target como vehículo `2`.
 Mientras QGroundControl no esté abierto, PX4 no deja armar
@@ -227,13 +239,26 @@ Para terminar, cambia el interceptor a *Hold* o *Land*.
 ## Ejecutar un nodo individual
 
 ```bash
-ros2 run interceptor pursuit_mode
-ros2 run interceptor PN_mode
 ros2 run interceptor target_tf2_odometry
+ros2 run interceptor interceptor_tf2_odometry
+ros2 run interceptor tf2_listener
 ```
 
+El nodo de diagnóstico de odometría es un único ejecutable que sirve para los
+dos drones, así que a mano hay que decirle a cuál escuchar:
+
+```bash
+ros2 run interceptor vehicle_odometry_subscriber --ros-args \
+  -p vehicle_name:=target -p odometry_topic:=/px4_1/fmu/out/vehicle_odometry
+```
+
+Sin esos parámetros usa los valores por defecto, que son los del interceptor.
+
 No ejecutes dos copias del mismo nodo sin una razón clara: podrían publicar el
-mismo transform o consumir recursos duplicados.
+mismo transform o consumir recursos duplicados. Y no lances un modo de guiado
+(`pursuit_mode` o `PN_mode`) mientras el launch tiene otro en marcha: los dos
+intentarían registrarse en PX4 y puede quedar un registro duplicado que no
+responde (ver "Nota sobre los modos", más abajo).
 
 ## Parar la simulación
 

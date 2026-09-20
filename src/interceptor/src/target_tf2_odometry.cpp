@@ -100,12 +100,18 @@ public:
           if (!ref_valid_interceptor_ || !ref_valid_target_) {
                         // Missing global reference of interceptor and/or target: the NED offset
                         // between origins can't be computed yet, so don't publish a wrong transform
+            std::string missing_refs;
+            if (!ref_valid_interceptor_) {
+              missing_refs += " interceptor";
+            }
+            if (!ref_valid_target_) {
+              missing_refs += missing_refs.empty() ? " target" : " and target";
+            }
             RCLCPP_WARN_THROTTLE(
               this->get_logger(), *this->get_clock(), 5000,
-              "Waiting for global reference (ref_lat/ref_lon/ref_alt) of%s%s before publishing "
+              "Waiting for global reference (ref_lat/ref_lon/ref_alt) of%s before publishing "
               "map -> %s/base_link",
-              !ref_valid_interceptor_ ? " interceptor" : "",
-              !ref_valid_target_ ? " target" : "",
+              missing_refs.c_str(),
               vehicle_name_.c_str());
             return;
           }

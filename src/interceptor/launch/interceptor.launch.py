@@ -4,8 +4,8 @@
 Launch file para el escenario interceptor/target.
 
 Arranca el agente Micro XRCE-DDS, los 4 nodos de odometria/diagnostico
-(target_vehicle_odometry_subscriber, target_tf2_odometry,
-interceptor_vehicle_odometry_subscriber, interceptor_tf2_odometry) y un solo modo de
+(dos instancias de vehicle_odometry_subscriber, una por vehiculo, mas
+target_tf2_odometry e interceptor_tf2_odometry) y un solo modo de
 guiado, elegido con el argumento modo:=pn|pursuit.
 
 Ejemplo de uso:
@@ -54,7 +54,12 @@ def generate_launch_description():
 
     target_vehicle_odometry_subscriber_node = Node(
         package='interceptor',
-        executable='target_vehicle_odometry_subscriber',
+        executable='vehicle_odometry_subscriber',
+        name='target_vehicle_odometry_subscriber',
+        parameters=[{
+            'vehicle_name': 'target',
+            'odometry_topic': '/px4_1/fmu/out/vehicle_odometry',
+        }],
         output='log',
     )
 
@@ -66,7 +71,12 @@ def generate_launch_description():
 
     interceptor_vehicle_odometry_subscriber_node = Node(
         package='interceptor',
-        executable='interceptor_vehicle_odometry_subscriber',
+        executable='vehicle_odometry_subscriber',
+        name='interceptor_vehicle_odometry_subscriber',
+        parameters=[{
+            'vehicle_name': 'interceptor',
+            'odometry_topic': '/fmu/out/vehicle_odometry',
+        }],
         output='log',
     )
 

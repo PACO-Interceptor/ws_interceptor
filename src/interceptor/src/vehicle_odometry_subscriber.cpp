@@ -1,8 +1,10 @@
 /**
  * @brief Vehicle Odometry uORB topic listener example
- * @file interceptor_vehicle_odometry_subscriber.cpp
+ * @file vehicle_odometry_subscriber.cpp
  * @addtogroup interceptor
  * @author David Rodriguez <david.rodriguez.elbahri@uvigo.gal>
+ * @details A single executable serves both vehicles, chosen via the vehicle_name/odometry_topic
+ *		parameters at launch.
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -15,17 +17,20 @@ class VehicleOdometrySubscriber : public rclcpp::Node
 {
 public:
   explicit VehicleOdometrySubscriber()
-  : Node("interceptor_vehicle_odometry_subscriber")
+  : Node("vehicle_odometry_subscriber")
   {
+    vehicle_name_ = this->declare_parameter<std::string>("vehicle_name", "interceptor");
+    std::string odometry_topic =
+      this->declare_parameter<std::string>("odometry_topic", "/fmu/out/vehicle_odometry");
+
     rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;
     auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);
 
     subscription_ =
-      this->create_subscription<px4_msgs::msg::VehicleOdometry>("px4_1/fmu/out/vehicle_odometry",
-      qos,
+      this->create_subscription<px4_msgs::msg::VehicleOdometry>(odometry_topic, qos,
         [this](const px4_msgs::msg::VehicleOdometry::UniquePtr msg) {
           std::cout << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
-          std::cout << "RECEIVED VEHICLE ODOMETRY DATA" << std::endl;
+          std::cout << "RECEIVED VEHICLE ODOMETRY DATA (" << vehicle_name_ << ")" << std::endl;
           std::cout << "Timestamp: " << msg->timestamp << std::endl;
           std::cout << "Pose frame: " << msg->pose_frame << std::endl;
           std::cout << "X Position: " << msg->position[0] << std::endl;
@@ -46,12 +51,13 @@ public:
 
 private:
   rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr subscription_;
+  std::string vehicle_name_;
 
 };
 
 int main(int argc, char *argv[])
 {
-  std::cout << "Starting interceptor_vehicle_odometry subscriber node..." << std::endl;
+  std::cout << "Starting vehicle_odometry_subscriber node..." << std::endl;
   setvbuf(stdout, NULL, _IONBF, BUFSIZ);
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<VehicleOdometrySubscriber>());

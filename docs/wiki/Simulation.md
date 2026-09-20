@@ -139,11 +139,20 @@ binario de PX4 que compiló el paso anterior. Cada parte de la orden importa:
 
 ### 3. Iniciar el launch del proyecto
 
+En otra terminal, **dentro de la carpeta del workspace** (los dos pasos
+anteriores te dejaron en la de PX4, y una terminal nueva empieza en tu carpeta
+personal):
+
 ```bash
+cd ~/ws_interceptor          # la ruta donde clonaste el workspace
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 launch interceptor interceptor.launch.py modo:=pn
 ```
+
+Si lanzas esos `source` desde otra carpeta, verás
+`bash: install/setup.bash: No such file or directory` y después
+`Package 'interceptor' not found`: son la misma causa, no estás en el workspace.
 
 El argumento `modo` es opcional y solo acepta `pn` o `pursuit`; si se omite,
 vale `pn`. El launch
@@ -166,7 +175,9 @@ Mientras QGroundControl no esté abierto, PX4 no deja armar
 
 ## Cómo saber si el arranque funcionó
 
-En una terminal nueva, después de hacer `source install/setup.bash`:
+En una terminal nueva, desde la carpeta del workspace y después de cargar el
+entorno (`source /opt/ros/jazzy/setup.bash` y `source install/setup.bash`, como
+en el paso 3):
 
 ```bash
 ros2 node list

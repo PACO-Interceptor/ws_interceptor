@@ -6,9 +6,12 @@ tamano no se conoce) con la estimacion de target_estimator, en offboard directo 
 PX4. Fases (ver px4_offboard): CLIMB, SETTLE, PURSUE, HOLD. Dentro de PURSUE:
 
 - Con estimacion reciente: velocidad de guiado.
+- En el ultimo freeze_time_s antes del paso congela el rumbo: de muy cerca la direccion
+  al checkpoint gira deprisa y seguirla desvia el paso.
 - Si deja de ver el checkpoint en el tramo final (t_go < terminal_time), o si la
   estimacion dice que ya lo ha dejado atras, sigue recto con la ultima orden durante
-  el t_go que quedaba mas coast_s, y pasa a HOLD.
+  el t_go que quedaba mas coast_s, y pasa a HOLD. Si iba a ciegas y lo vuelve a ver
+  delante, retoma el guiado.
 - Si lo pierde lejos, se para en el sitio hasta volver a verlo.
 """
 
@@ -45,6 +48,7 @@ class CheckpointGuidance(Px4OffboardNode):
         )
         self._pass_radius = self.declare_parameter('pass_radius_m', 5.0).value
         self._coast_time = self.declare_parameter('coast_s', 2.0).value
+        self._freeze_time = self.declare_parameter('freeze_time_s', 1.0).value
         self._estimate_timeout = self.declare_parameter('estimate_timeout_s', 0.5).value
         self._max_duration = self.declare_parameter('max_duration_s', 60.0).value
         self._min_altitude = self.declare_parameter('min_altitude_m', 3.0).value
@@ -55,6 +59,7 @@ class CheckpointGuidance(Px4OffboardNode):
         self._last_t_go = math.inf
         self._coast_until = None
         self._coast_start = None
+        self._coast_resumable = False
         self._last_log = -math.inf
         self.create_subscription(
             TargetEstimate, 'interceptor/target_estimate', self._estimate_callback, 10)
@@ -80,7 +85,8 @@ class CheckpointGuidance(Px4OffboardNode):
 
         fresh = self._estimate is not None and now - self._estimate_time < self._estimate_timeout
         if self._coast_until is not None:
-            if fresh and self._estimate_time > self._coast_start and self._still_ahead():
+            if (self._coast_resumable and fresh and self._estimate_time > self._coast_start
+                    and self._still_ahead()):
                 self.get_logger().info('Vuelve a ver el checkpoint delante: retoma el guiado.')
                 self._coast_until = None
             elif now >= self._coast_until:
@@ -90,7 +96,7 @@ class CheckpointGuidance(Px4OffboardNode):
 
         if not fresh:
             if self._last_cmd is not None and self._last_t_go < self._prm.terminal_time:
-                self._start_coast(now, 'sin imagen en el tramo final')
+                self._start_coast(now, 'sin imagen en el tramo final', resumable=True)
                 return [NAN] * 3, self._limit_altitude(self._last_cmd)
             return [NAN] * 3, [0.0, 0.0, 0.0]
 
@@ -99,6 +105,10 @@ class CheckpointGuidance(Px4OffboardNode):
         v_t = enu_to_ned(e.velocity.x, e.velocity.y, e.velocity.z)
         rel_sigma = math.sqrt(max(e.covariance[48], 0.0)) / max(e.size, 1e-6)
         v_cmd, t_go, gain = guidance_velocity(r, v_t, rel_sigma, elapsed, self._prm)
+        if t_go < self._freeze_time and self._last_cmd is not None:
+            self._last_t_go = t_go
+            self._start_coast(now, 'rumbo congelado en el ultimo segundo')
+            return [NAN] * 3, self._limit_altitude(self._last_cmd)
         self._last_cmd, self._last_t_go = v_cmd, t_go
 
         if float(r @ v_cmd) < 0.0 and float(np.linalg.norm(r)) < self._pass_radius:
@@ -117,10 +127,11 @@ class CheckpointGuidance(Px4OffboardNode):
         r = enu_to_ned(e.position.x, e.position.y, e.position.z) - np.array(self.position)
         return float(r @ np.array(self._last_cmd)) > 0.0
 
-    def _start_coast(self, now: float, reason: str) -> None:
+    def _start_coast(self, now: float, reason: str, resumable: bool = False) -> None:
         """Sigue recto con la ultima orden el t_go que quedaba mas coast_s."""
         remaining = self._last_t_go if math.isfinite(self._last_t_go) else 0.0
         self._coast_start = now
+        self._coast_resumable = resumable
         self._coast_until = now + max(remaining, 0.0) + self._coast_time
         self.get_logger().info(
             f'Paso final ({reason}): recto {self._coast_until - now:.1f} s y parada.')

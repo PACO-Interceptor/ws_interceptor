@@ -9,9 +9,12 @@ interceptor ejecuta un perfil de maniobra fijo. La verdad de la simulacion solo 
 estimation_evaluator, que escribe el error en un CSV.
 
     ros2 launch interceptor estimation.launch.py profile:=weave
+    ros2 launch interceptor estimation.launch.py mode:=guidance
 
-Perfiles (profile): hover, constant, surge, weave. Con hover y constant la escala no es
-observable (no deberia converger); con surge y weave si.
+mode:=maneuver (defecto) vuela un perfil fijo (profile): hover, constant, surge, weave.
+Con hover y constant la escala no es observable (no deberia converger); con surge y
+weave si. mode:=guidance guia al interceptor a traves de la pelota (checkpoint_guidance);
+el evaluador registra por cuanto pasa del centro ("PASO por el checkpoint").
 
 PX4 y Gazebo se lanzan antes, a mano, cada uno en su terminal:
     interceptor (instancia 0), desde ~/PX4-Autopilot: make px4_sitl gz_x500_mono_cam
@@ -29,7 +32,8 @@ import os
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
-from launch.substitutions import EnvironmentVariable, LaunchConfiguration
+from launch.conditions import IfCondition
+from launch.substitutions import EnvironmentVariable, EqualsSubstitution, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -57,7 +61,10 @@ def detector_node(context):
         executable='target_detector',
         parameters=[SIM_TIME, {
             'model_path': LaunchConfiguration('model_path'),
-            'target_class': 'sports ball',
+            # Medido en Gazebo: a partir de ~6 m (caja > ~50 px) YOLO deja de llamar
+            # "sports ball" a la pelota naranja lisa y la llama "orange". Con el detector
+            # entrenado para el checkpoint real sobrara la segunda clase.
+            'target_class': 'sports ball,orange',
             # Como texto: '0' (GPU) llegaria como entero y el nodo espera string.
             'device': ParameterValue(LaunchConfiguration('device'), value_type=str),
             'imgsz': 1280,
@@ -71,6 +78,16 @@ def detector_node(context):
 def generate_launch_description():
     """Describe la cadena de estimacion y los nodos de vuelo del ensayo."""
     args = [
+        DeclareLaunchArgument(
+            'mode', default_value='maneuver', choices=['maneuver', 'guidance'],
+            description='maneuver = perfil fijo (observer_maneuver); guidance = pasar por el '
+                        'checkpoint (checkpoint_guidance).'),
+        DeclareLaunchArgument(
+            'speed_mps', default_value='3.0',
+            description='Velocidad del interceptor en mode:=guidance [m/s].'),
+        DeclareLaunchArgument(
+            'excitation_amp_mps', default_value='2.0',
+            description='Amplitud de la excitacion lateral en mode:=guidance (0 = sin ella).'),
         DeclareLaunchArgument(
             'profile', default_value='weave',
             choices=['hover', 'constant', 'surge', 'weave'],
@@ -161,7 +178,7 @@ def generate_launch_description():
         package='interceptor', executable='estimation_evaluator',
         parameters=[SIM_TIME, {
             'true_size': 1.0,
-            'ball_offset': [0.0, 0.0, 0.75],
+            'ball_offset': [0.0, 0.0, 2.5],
             'csv_path': LaunchConfiguration('csv_path'),
         }],
         output='screen')
@@ -194,6 +211,20 @@ def generate_launch_description():
             'start_north_m': 0.0,
             'start_east_m': 0.0,
         }],
+        condition=IfCondition(EqualsSubstitution(LaunchConfiguration('mode'), 'maneuver')),
+        output='screen')
+
+    checkpoint_guidance = Node(
+        package='interceptor', executable='checkpoint_guidance',
+        parameters=[{
+            'altitude_m': 10.0,
+            'speed_mps': float_arg('speed_mps'),
+            'excitation_amp_mps': float_arg('excitation_amp_mps'),
+            'start_delay_s': 10.0,
+            'start_north_m': 0.0,
+            'start_east_m': 0.0,
+        }],
+        condition=IfCondition(EqualsSubstitution(LaunchConfiguration('mode'), 'guidance')),
         output='screen')
 
     return LaunchDescription([
@@ -208,4 +239,5 @@ def generate_launch_description():
         estimation_evaluator,
         target_trajectory,
         observer_maneuver,
+        checkpoint_guidance,
     ])

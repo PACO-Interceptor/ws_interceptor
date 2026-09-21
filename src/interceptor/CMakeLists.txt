@@ -104,6 +104,7 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_bearing test/test_bearing.py)
   ament_add_pytest_test(test_bearing_angle_filter test/test_bearing_angle_filter.py)
+  ament_add_pytest_test(test_guidance test/test_guidance.py)
 endif()
 
 install(TARGETS
@@ -122,6 +123,7 @@ install(PROGRAMS
   scripts/target_estimator
   scripts/estimation_evaluator
   scripts/observer_maneuver
+  scripts/checkpoint_guidance
   scripts/spawn_ball_target
   DESTINATION lib/${PROJECT_NAME}
 )

@@ -3,8 +3,8 @@
   x500 de PX4 con una pelota encima, que hace de checkpoint movil.
 
   La pelota es solo visual (sin colision) y casi sin masa, para no cambiar el vuelo.
-  Su centro esta a 0.75 m sobre base_link: ese es el ball_offset del
-  estimation_evaluator. Diametro 1.0 m: el true_size del evaluador. El estimador NO
+  Su centro esta a 2.5 m sobre base_link (ball_offset del estimation_evaluator): asi
+  el interceptor puede atravesarla sin chocar con el dron que la lleva. Diametro 1.0 m: el true_size del evaluador. El estimador NO
   conoce ninguno de los dos.
 -->
 <sdf version='1.9'>
@@ -13,7 +13,7 @@
       <uri>x500</uri>
     </include>
     <link name='ball_link'>
-      <pose relative_to='base_link'>0 0 0.75 0 0 0</pose>
+      <pose relative_to='base_link'>0 0 2.5 0 0 0</pose>
       <inertial>
         <mass>0.01</mass>
         <inertia>

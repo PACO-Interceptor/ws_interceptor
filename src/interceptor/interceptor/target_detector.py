@@ -37,9 +37,9 @@ class TargetDetector(Node):
             'camera_info_topic'
         ).get_parameter_value().string_value
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
-        self._target_class = self.get_parameter(
-            'target_class'
-        ).get_parameter_value().string_value
+        # Una o varias clases separadas por comas; vacio = cualquier clase.
+        target_class = self.get_parameter('target_class').get_parameter_value().string_value
+        self._target_classes = {c.strip() for c in target_class.split(',') if c.strip()}
         self._confidence = self.get_parameter(
             'confidence'
         ).get_parameter_value().double_value
@@ -176,7 +176,7 @@ class TargetDetector(Node):
 
                     detections_msg.detections.append(detection)
 
-                    if not self._target_class or class_name == self._target_class:
+                    if not self._target_classes or class_name in self._target_classes:
                         if score > highest_score:
                             highest_score = score
                             best_target_center = (float(cx_box), float(cy_box))

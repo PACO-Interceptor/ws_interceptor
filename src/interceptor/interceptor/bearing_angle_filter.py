@@ -65,8 +65,12 @@ class FilterParams:
     sigma_accel: float = 0.3
     # Deriva relativa del tamano [1/sqrt(s)]; pequena, solo para errores de modelo.
     sigma_log_size_rate: float = 1e-3
-    # Ruido del bearing [rad] (jitter del centro de la caja / focal).
-    sigma_bearing: float = 0.005
+    # Ruido del bearing [rad]. No es solo el jitter de la caja (~0.3 grados): incluye el
+    # error de actitud de la camara (EKF de PX4, desfase imagen-pose mientras gira), que
+    # esta correlado con la maniobra y sesga la escala. Con 0.005 un desfase de 30 ms
+    # llevaba el tamano a 0.28 o 1.33 m (real 1.0) con sigma de 0.02; con 0.02 se queda
+    # en 0.86-1.12 con sigma de 0.12-0.20 (rosbag de Gazebo, tools/replay_estimation.py).
+    sigma_bearing: float = 0.02
     # Ruido del angulo subtendido [rad] (jitter del ancho de la caja / focal).
     sigma_angle: float = 0.004
     # Prior del tamano [m]: lo que se supone antes de ver nada. NO es el tamano real.

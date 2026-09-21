@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Launcher script for the checkpoint_guidance node."""
+
+from interceptor.checkpoint_guidance import main
+
+if __name__ == '__main__':
+    main()

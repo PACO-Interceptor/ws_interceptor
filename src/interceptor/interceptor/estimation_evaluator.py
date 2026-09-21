@@ -48,9 +48,11 @@ class EstimationEvaluator(Node):
             'camera_frame', 'interceptor/camera_link').value
         # Centro de la pelota en el base_link del objetivo (FLU) y su diametro real.
         self._ball_offset = tuple(self.declare_parameter(
-            'ball_offset', [0.0, 0.0, 0.75]).value)
+            'ball_offset', [0.0, 0.0, 2.5]).value)
         self._true_size = self.declare_parameter('true_size', 1.0).value
         self._summary_period = self.declare_parameter('summary_period_s', 2.0).value
+        self._interceptor_frame = self.declare_parameter(
+            'interceptor_frame', 'interceptor/base_link').value
         csv_path = self.declare_parameter('csv_path', '').value
         if not csv_path:
             csv_dir = os.path.expanduser('~/.ros/interceptor_estimation')
@@ -72,6 +74,10 @@ class EstimationEvaluator(Node):
         self._tf_listener = TransformListener(self._tf_buffer, self)
 
         self.create_subscription(TwistStamped, 'target/velocity', self._velocity_callback, 10)
+        # Distancia real interceptor-pelota, para medir por cuanto pasa por el checkpoint.
+        self._closest = math.inf
+        self._pass_logged = False
+        self.create_timer(0.02, self._closest_approach_callback)
         self.create_subscription(
             TargetEstimate, 'interceptor/target_estimate', self._estimate_callback, 10)
 
@@ -86,6 +92,29 @@ class EstimationEvaluator(Node):
             return self._tf_buffer.lookup_transform(self._world_frame, frame, stamp)
         except TransformException:
             return None
+
+    def _closest_approach_callback(self) -> None:
+        """Registra la distancia minima de cada paso cerca de la pelota (< 5 m)."""
+        target_tf = self._lookup(self._target_frame, Time())
+        interceptor_tf = self._lookup(self._interceptor_frame, Time())
+        if target_tf is None or interceptor_tf is None:
+            return
+        t = target_tf.transform.translation
+        r = target_tf.transform.rotation
+        ball = np.array([t.x, t.y, t.z]) + np.array(
+            rotate_by_quaternion(r.x, r.y, r.z, r.w, self._ball_offset))
+        i = interceptor_tf.transform.translation
+        dist = float(np.linalg.norm(ball - np.array([i.x, i.y, i.z])))
+        if dist > 6.0:
+            # Lejos: se rearma para registrar el proximo paso.
+            self._closest = math.inf
+            self._pass_logged = False
+        elif dist < self._closest:
+            self._closest = dist
+        elif not self._pass_logged and self._closest < 5.0 and dist > self._closest + 1.0:
+            self._pass_logged = True
+            self.get_logger().info(
+                f'PASO por el checkpoint: distancia minima al centro {self._closest:.2f} m')
 
     def _estimate_callback(self, msg: TargetEstimate) -> None:
         """Compara una estimacion con la verdad y la registra."""

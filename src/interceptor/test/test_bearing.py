@@ -2,7 +2,7 @@
 
 import math
 
-from interceptor.bearing import pixel_to_bearing, subtended_angle
+from interceptor.bearing import pixel_to_bearing, rotate_by_quaternion, subtended_angle
 import pytest
 
 FX = 100.0
@@ -73,3 +73,16 @@ def test_subtended_angle_rejects_bad_input():
         subtended_angle(CX, CY, 10.0, 0.0, CX, CY)
     with pytest.raises(ValueError):
         subtended_angle(CX, CY, 0.0, FX, CX, CY)
+
+
+def test_rotate_by_quaternion_yaw_90():
+    """Un giro de 90 grados en z lleva x a y."""
+    s = math.sqrt(0.5)
+    x, y, z = rotate_by_quaternion(0.0, 0.0, s, s, (1.0, 0.0, 0.0))
+    assert (x, y, z) == pytest.approx((0.0, 1.0, 0.0))
+
+
+def test_rotate_by_quaternion_identity():
+    """El cuaternio identidad no cambia el vector."""
+    assert rotate_by_quaternion(0.0, 0.0, 0.0, 1.0, (0.3, -0.2, 0.9)) == pytest.approx(
+        (0.3, -0.2, 0.9))

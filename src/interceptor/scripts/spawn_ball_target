@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Lanza el objetivo con pelota (instancia 1 de PX4) en un Gazebo ya en marcha.
+#
+# Crea el modelo x500_ball en el mundo y arranca PX4 enganchado a el
+# (PX4_GZ_MODEL_NAME) con el airframe del x500 normal. Antes hay que tener el
+# interceptor corriendo (make px4_sitl gz_x500_mono_cam), que es quien abre Gazebo.
+#
+# Uso: ros2 run interceptor spawn_ball_target [x] [y]   (posicion en Gazebo, ENU; defecto 0 20)
+# Variables: PX4_DIR (defecto ~/PX4-Autopilot), GZ_WORLD (defecto default).
+set -euo pipefail
+
+X="${1:-0}"
+Y="${2:-20}"
+PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
+GZ_WORLD="${GZ_WORLD:-default}"
+MODEL_NAME="x500_ball_1"
+# Mismo transporte que el Gazebo que abre PX4.
+export GZ_IP=127.0.0.1
+
+# El script esta instalado en <prefix>/lib/interceptor; el modelo, en <prefix>/share.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL_SDF="$SCRIPT_DIR/../../share/interceptor/models/x500_ball/model.sdf"
+if [ ! -f "$MODEL_SDF" ]; then
+  echo "No encuentro $MODEL_SDF (¿paquete compilado e instalado?)" >&2
+  exit 1
+fi
+MODEL_SDF="$(realpath "$MODEL_SDF")"
+
+if ! gz topic -l | grep -q "^/world/$GZ_WORLD/clock"; then
+  echo "Gazebo no esta corriendo el mundo '$GZ_WORLD'. Lanza antes el interceptor." >&2
+  exit 1
+fi
+
+echo "Creando $MODEL_NAME en ($X, $Y)"
+gz service -s "/world/$GZ_WORLD/create" --reqtype gz.msgs.EntityFactory \
+  --reptype gz.msgs.Boolean --timeout 5000 \
+  --req "name: \"$MODEL_NAME\", allow_renaming: false, sdf: '<sdf version=\"1.9\"><include><uri>file://$MODEL_SDF</uri><pose>$X $Y 0 0 0 0</pose></include></sdf>'"
+
+cd "$PX4_DIR"
+PX4_GZ_MODEL_NAME="$MODEL_NAME" PX4_SIM_MODEL=gz_x500 \
+  exec ./build/px4_sitl_default/bin/px4 -i 1

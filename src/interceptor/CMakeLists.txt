@@ -17,7 +17,7 @@ find_package(px4_ros_com REQUIRED)
 find_package(px4_ros2_cpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
-# Modulo Python del paquete (interceptor/bearing.py, interceptor/target_detector.py)
+# Modulo Python del paquete (percepcion, estimacion y nodos de ensayo en interceptor/)
 ament_python_install_package(${PROJECT_NAME})
 
 add_executable(vehicle_odometry_subscriber src/vehicle_odometry_subscriber.cpp)
@@ -103,6 +103,7 @@ if(BUILD_TESTING)
 
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_bearing test/test_bearing.py)
+  ament_add_pytest_test(test_bearing_angle_filter test/test_bearing_angle_filter.py)
 endif()
 
 install(TARGETS
@@ -118,11 +119,16 @@ install(TARGETS
 
 install(PROGRAMS
   scripts/target_detector
+  scripts/target_estimator
+  scripts/estimation_evaluator
+  scripts/observer_maneuver
+  scripts/spawn_ball_target
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY
   launch
+  models
   DESTINATION share/${PROJECT_NAME}
 )
 

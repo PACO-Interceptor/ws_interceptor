@@ -85,3 +85,35 @@ def subtended_angle(
     cosine = (l_left * l_left + l_right * l_right - width * width) / (2.0 * l_left * l_right)
     # El redondeo puede sacar el coseno de [-1, 1] con cajas muy pequenas.
     return math.acos(max(-1.0, min(1.0, cosine)))
+
+
+def rotate_by_quaternion(
+    qx: float,
+    qy: float,
+    qz: float,
+    qw: float,
+    v: Tuple[float, float, float],
+) -> Tuple[float, float, float]:
+    """
+    Rota el vector v por el cuaternio unitario (qx, qy, qz, qw).
+
+    Sirve para pasar un bearing del frame de la camara al del mundo con la rotacion
+    de una transformada tf2 (convenio de ROS: x, y, z, w).
+
+    :param qx: Componente x del cuaternio.
+    :param qy: Componente y del cuaternio.
+    :param qz: Componente z del cuaternio.
+    :param qw: Componente w (escalar) del cuaternio.
+    :param v: Vector a rotar.
+    :return: Vector rotado.
+    """
+    vx, vy, vz = v
+    # v' = v + 2 w (q x v) + 2 q x (q x v)
+    tx = 2.0 * (qy * vz - qz * vy)
+    ty = 2.0 * (qz * vx - qx * vz)
+    tz = 2.0 * (qx * vy - qy * vx)
+    return (
+        vx + qw * tx + (qy * tz - qz * ty),
+        vy + qw * ty + (qz * tx - qx * tz),
+        vz + qw * tz + (qx * ty - qy * tx),
+    )

@@ -1,10 +1,13 @@
 /**
- * @brief Genera y publica una trayectoria circular para el objetivo en SITL.
+ * @brief Genera y publica una trayectoria (circulo o recta) para el objetivo en SITL.
  * @file target_trajectory.cpp
  * @addtogroup interceptor
  * @author David Rodriguez <david.rodriguez.elbahri@uvigo.gal>
  * @details Publica OffboardControlMode y TrajectorySetpoint en los topics de PX4,
  *          y envia comandos para armar y poner en modo offboard al dron objetivo.
+ *          Con trajectory_type = "circle" (defecto) da vueltas a un circulo; con
+ *          "line" recorre una recta a velocidad constante y se para al final, que es
+ *          el movimiento que supone el estimador visual (velocidad constante).
  *
  * AVISO DE DISENO: mientras este nodo este en ejecucion, no es posible tomar
  * el control del objetivo desde QGC ni desde ninguna otra fuente externa. Si
@@ -13,10 +16,12 @@
  * mano hay que parar este nodo.
  */
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 #include <px4_msgs/msg/offboard_control_mode.hpp>
@@ -45,6 +50,14 @@ public:
     circle_speed_mps_ = this->declare_parameter<double>("circle_speed_mps", 3.0);
     center_north_m_ = this->declare_parameter<double>("center_north_m", 0.0);
     center_east_m_ = this->declare_parameter<double>("center_east_m", 0.0);
+    trajectory_type_ = this->declare_parameter<std::string>("trajectory_type", "circle");
+    line_heading_deg_ = this->declare_parameter<double>("line_heading_deg", 90.0);
+    line_speed_mps_ = this->declare_parameter<double>("line_speed_mps", 1.0);
+    line_length_m_ = this->declare_parameter<double>("line_length_m", 30.0);
+    line_start_delay_s_ = this->declare_parameter<double>("line_start_delay_s", 5.0);
+    if (trajectory_type_ != "circle" && trajectory_type_ != "line") {
+      throw std::invalid_argument("trajectory_type debe ser \"circle\" o \"line\"");
+    }
 
     std::string ns = px4_namespace_;
     if (!ns.empty() && ns.front() != '/') {
@@ -68,12 +81,18 @@ public:
       ns + "/fmu/out/vehicle_odometry", qos,
       [this](const px4_msgs::msg::VehicleOdometry::UniquePtr msg) {
         if (phase_ == Phase::CLIMB) {
-          if (std::fabs(msg->position[2] - static_cast<float>(-altitude_m_)) < 1.0f) {
-            phase_ = Phase::CIRCLE;
+          // En modo line tambien tiene que haber llegado al inicio de la recta: si ya
+          // estaba en el aire en otro sitio, la recta no empieza hasta llegar.
+          const double dn = msg->position[0] - center_north_m_;
+          const double de = msg->position[1] - center_east_m_;
+          const bool at_start = trajectory_type_ != "line" || std::hypot(dn, de) < 1.0;
+          if (at_start && std::fabs(msg->position[2] - static_cast<float>(-altitude_m_)) < 1.0f) {
+            phase_ = (trajectory_type_ == "line") ? Phase::LINE : Phase::CIRCLE;
             t0_ = this->get_clock()->now();
             RCLCPP_INFO(
               this->get_logger(),
-              "Cambio de fase a CIRCLE a una altura de %.2f m",
+              "Cambio de fase a %s a una altura de %.2f m",
+              phase_ == Phase::LINE ? "LINE" : "CIRCLE",
               -msg->position[2]);
           }
         }
@@ -106,7 +125,8 @@ private:
   enum class Phase
   {
     CLIMB,
-    CIRCLE
+    CIRCLE,
+    LINE
   };
 
   void timer_callback()
@@ -179,6 +199,23 @@ private:
       msg.position[1] = static_cast<float>(center_east_m_);
       msg.position[2] = static_cast<float>(-altitude_m_);
       msg.yaw = 0.0f;
+    } else if (phase_ == Phase::LINE) {
+      // Espera line_start_delay_s en el inicio y luego avanza a velocidad constante hasta
+      // recorrer line_length_m. La velocidad va tambien como feedforward para que PX4
+      // la siga sin el retraso de perseguir solo la posicion.
+      const double t = (this->get_clock()->now() - t0_).seconds() - line_start_delay_s_;
+      const double travel_time = (line_speed_mps_ > 1e-6) ? line_length_m_ / line_speed_mps_ : 0.0;
+      const bool moving = t > 0.0 && t < travel_time;
+      const double s = std::clamp(t, 0.0, travel_time) * line_speed_mps_;
+      const double heading = line_heading_deg_ * M_PI / 180.0;
+      msg.position[0] = static_cast<float>(center_north_m_ + s * std::cos(heading));
+      msg.position[1] = static_cast<float>(center_east_m_ + s * std::sin(heading));
+      msg.position[2] = static_cast<float>(-altitude_m_);
+      const double v = moving ? line_speed_mps_ : 0.0;
+      msg.velocity[0] = static_cast<float>(v * std::cos(heading));
+      msg.velocity[1] = static_cast<float>(v * std::sin(heading));
+      msg.velocity[2] = 0.0f;
+      msg.yaw = static_cast<float>(std::atan2(std::sin(heading), std::cos(heading)));
     } else {
       double t = (this->get_clock()->now() - t0_).seconds();
       double omega = (circle_radius_m_ > 1e-6) ? (circle_speed_mps_ / circle_radius_m_) : 0.0;
@@ -217,6 +254,11 @@ private:
   double circle_speed_mps_;
   double center_north_m_;
   double center_east_m_;
+  std::string trajectory_type_;
+  double line_heading_deg_;
+  double line_speed_mps_;
+  double line_length_m_;
+  double line_start_delay_s_;
 
   uint64_t tick_count_{0};
   Phase phase_{Phase::CLIMB};

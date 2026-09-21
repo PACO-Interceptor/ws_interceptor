@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  x500 de PX4 con una pelota encima, que hace de checkpoint movil.
+
+  La pelota es solo visual (sin colision) y casi sin masa, para no cambiar el vuelo.
+  Su centro esta a 0.75 m sobre base_link: ese es el ball_offset del
+  estimation_evaluator. Diametro 1.0 m: el true_size del evaluador. El estimador NO
+  conoce ninguno de los dos.
+-->
+<sdf version='1.9'>
+  <model name='x500_ball'>
+    <include merge='true'>
+      <uri>x500</uri>
+    </include>
+    <link name='ball_link'>
+      <pose relative_to='base_link'>0 0 0.75 0 0 0</pose>
+      <inertial>
+        <mass>0.01</mass>
+        <inertia>
+          <ixx>0.001</ixx>
+          <iyy>0.001</iyy>
+          <izz>0.001</izz>
+        </inertia>
+      </inertial>
+      <visual name='ball_visual'>
+        <geometry>
+          <sphere>
+            <radius>0.5</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.9 0.35 0.05 1</ambient>
+          <diffuse>0.9 0.35 0.05 1</diffuse>
+          <specular>0.3 0.3 0.3 1</specular>
+        </material>
+      </visual>
+    </link>
+    <joint name='ball_joint' type='fixed'>
+      <parent>base_link</parent>
+      <child>ball_link</child>
+    </joint>
+  </model>
+</sdf>

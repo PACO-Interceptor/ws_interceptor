@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Launcher script for the observer_maneuver node."""
+
+from interceptor.observer_maneuver import main
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Launcher script for the estimation_evaluator node."""
+
+from interceptor.estimation_evaluator import main
+
+if __name__ == '__main__':
+    main()

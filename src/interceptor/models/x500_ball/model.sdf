@@ -28,10 +28,18 @@
             <radius>0.5</radius>
           </sphere>
         </geometry>
+        <!-- Textura de balon de futbol (tools/make_ball_texture.py): YOLO la reconoce
+             como "sports ball" de 3 a 16 m; la naranja lisa salia como "orange". -->
         <material>
-          <ambient>0.9 0.35 0.05 1</ambient>
-          <diffuse>0.9 0.35 0.05 1</diffuse>
-          <specular>0.3 0.3 0.3 1</specular>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0.2 0.2 0.2 1</specular>
+          <pbr>
+            <metal>
+              <albedo_map>materials/textures/soccer.png</albedo_map>
+              <metalness>0.0</metalness>
+              <roughness>0.6</roughness>
+            </metal>
+          </pbr>
         </material>
       </visual>
     </link>

@@ -61,10 +61,7 @@ def detector_node(context):
         executable='target_detector',
         parameters=[SIM_TIME, {
             'model_path': LaunchConfiguration('model_path'),
-            # Medido en Gazebo: a partir de ~6 m (caja > ~50 px) YOLO deja de llamar
-            # "sports ball" a la pelota naranja lisa y la llama "orange". Con el detector
-            # entrenado para el checkpoint real sobrara la segunda clase.
-            'target_class': 'sports ball,orange',
+            'target_class': 'sports ball',
             # Como texto: '0' (GPU) llegaria como entero y el nodo espera string.
             'device': ParameterValue(LaunchConfiguration('device'), value_type=str),
             'imgsz': 1280,

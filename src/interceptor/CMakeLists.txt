@@ -7,6 +7,7 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
@@ -15,6 +16,9 @@ find_package(px4_msgs REQUIRED)
 find_package(px4_ros_com REQUIRED)
 find_package(px4_ros2_cpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+
+# Modulo Python del paquete (interceptor/bearing.py, interceptor/target_detector.py)
+ament_python_install_package(${PROJECT_NAME})
 
 add_executable(vehicle_odometry_subscriber src/vehicle_odometry_subscriber.cpp)
 ament_target_dependencies(vehicle_odometry_subscriber
@@ -80,6 +84,12 @@ ament_target_dependencies(PN_mode
   px4_ros2_cpp
 )
 
+add_executable(target_trajectory src/target_trajectory.cpp)
+ament_target_dependencies(target_trajectory
+  rclcpp
+  px4_msgs
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
@@ -90,6 +100,9 @@ if(BUILD_TESTING)
   # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_bearing test/test_bearing.py)
 endif()
 
 install(TARGETS
@@ -99,6 +112,12 @@ install(TARGETS
   tf2_listener
   pursuit_mode
   PN_mode
+  target_trajectory
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/target_detector
   DESTINATION lib/${PROJECT_NAME}
 )
 

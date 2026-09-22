@@ -7,6 +7,14 @@ Salida: TargetEstimate en el frame del mundo, y la tf world -> target_estimate p
 verla en RViz.
 
 El filtro esta en interceptor.bearing_angle_filter; este nodo solo lo alimenta.
+
+El ruido de cada bearing incluye la incertidumbre de actitud que publica PX4 en la
+odometria del interceptor (orientation_variance), multiplicada por
+attitude_var_scale. En el primer vuelo tras arrancar, el rumbo de PX4 tiene ~10 grados
+de incertidumbre y el EKF lo corrige justo al acelerar: ese giro, correlado con la
+maniobra, hacia que el filtro se convenciera de una escala falsa. Con la varianza de PX4
+(x9, elegido reproduciendo 25 pasadas de Gazebo) ninguna queda con el tamano fuera de
+2 sigmas, frente a 4 de 25 sin ella.
 """
 
 import math
@@ -16,9 +24,11 @@ from interceptor.bearing import rotate_by_quaternion
 from interceptor.bearing_angle_filter import BearingAngleFilter, FilterParams
 from interceptor_msgs.msg import TargetEstimate, TargetSighting
 import numpy as np
+from px4_msgs.msg import VehicleOdometry
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformBroadcaster, TransformException, TransformListener
@@ -38,6 +48,9 @@ class TargetEstimator(Node):
         self._publish_tf = self.declare_parameter('publish_tf', True).value
         # Si se rechazan tantas observaciones seguidas, el filtro ha divergido (p. ej. el
         # objetivo ha maniobrado fuerte) y ya no se recuperaria solo: se reinicia.
+        self._attitude_var_scale = self.declare_parameter('attitude_var_scale', 9.0).value
+        odometry_topic = self.declare_parameter(
+            'odometry_topic', '/fmu/out/vehicle_odometry').value
         self._max_consecutive_rejections = self.declare_parameter(
             'max_consecutive_rejections', 15).value
 
@@ -68,6 +81,13 @@ class TargetEstimator(Node):
 
         self._estimate_pub = self.create_publisher(
             TargetEstimate, 'interceptor/target_estimate', 10)
+        # Varianza de actitud de PX4 (roll, pitch, yaw) [rad^2]; cambia despacio, asi que
+        # basta con la ultima recibida.
+        self._attitude_var = None
+        px4_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=5)
+        self.create_subscription(
+            VehicleOdometry, odometry_topic, self._odometry_callback, px4_qos)
         self._sighting_sub = self.create_subscription(
             TargetSighting, 'interceptor/target_sighting', self._sighting_callback, 10)
         self.create_service(Trigger, 'target_estimator/reset', self._reset_callback)
@@ -79,6 +99,19 @@ class TargetEstimator(Node):
         self.get_logger().info('Estimacion reiniciada a peticion.')
         response.success = True
         return response
+
+    def _odometry_callback(self, msg: VehicleOdometry) -> None:
+        """Guarda la varianza de actitud que estima PX4."""
+        if all(math.isfinite(v) for v in msg.orientation_variance):
+            self._attitude_var = [float(v) for v in msg.orientation_variance]
+
+    def _bearing_sigma(self):
+        """Sigma del bearing con la incertidumbre de actitud de PX4 (None = por defecto)."""
+        if self._attitude_var is None or self._attitude_var_scale <= 0.0:
+            return None
+        roll, pitch, yaw = self._attitude_var
+        att = self._attitude_var_scale * (yaw + 0.5 * (roll + pitch))
+        return math.sqrt(self._filter.params.sigma_bearing ** 2 + att)
 
     def _sighting_callback(self, msg: TargetSighting) -> None:
         """Predice hasta el instante de la imagen y corrige con la observacion."""
@@ -123,7 +156,7 @@ class TargetEstimator(Node):
                 f'a {self._filter.distance:.1f} m.')
         else:
             self._filter.predict(dt, p_o)
-            info = self._filter.update(p_o, g, theta)
+            info = self._filter.update(p_o, g, theta, self._bearing_sigma())
             if not (info.bearing_accepted and (info.angle_accepted or theta <= 0.0)):
                 self._rejected += 1
                 self._consecutive_rejections += 1

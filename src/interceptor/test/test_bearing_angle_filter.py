@@ -160,3 +160,16 @@ def test_no_size_blowup_when_maneuver_starts():
         max_size = max(max_size, filt.size)
     assert max_size < 3.0
     assert filt.size == pytest.approx(1.0, abs=0.25)
+
+
+def test_larger_bearing_sigma_moves_estimate_less():
+    """Un bearing con sigma grande (actitud poco fiable) corrige menos el estado."""
+    moves = []
+    for sigma in (None, 0.2):
+        filt = BearingAngleFilter(FilterParams())
+        filt.update(np.zeros(3), np.array([1.0, 0.0, 0.0]), 0.1)
+        before = filt.position
+        filt.predict(0.1, np.zeros(3))
+        filt.update(np.zeros(3), np.array([1.0, 0.2, 0.0]), 0.1, sigma)
+        moves.append(np.linalg.norm(filt.position - before))
+    assert moves[1] < 0.5 * moves[0]

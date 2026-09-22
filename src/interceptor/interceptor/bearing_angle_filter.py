@@ -204,13 +204,16 @@ class BearingAngleFilter:
         self.P = f @ self.P @ f.T + q
         self._clamp_size()
 
-    def update(self, p_o: np.ndarray, g: np.ndarray, theta: float) -> UpdateInfo:
+    def update(self, p_o: np.ndarray, g: np.ndarray, theta: float,
+               sigma_bearing: Optional[float] = None) -> UpdateInfo:
         """
         Corrige con una medida.
 
         g es el bearing unitario en el mundo y theta el angulo subtendido (<= 0 si no
         hay angulo). p_o es la posicion de la camara en el instante de la medida, y
         tiene que coincidir con la de la ultima predict().
+
+        sigma_bearing, si se da, sustituye a params.sigma_bearing en esta medida.
 
         Si el filtro no esta inicializado, lo inicializa (requiere theta > 0).
         """
@@ -227,7 +230,8 @@ class BearingAngleFilter:
         h_b = np.zeros((2, STATE_DIM))
         h_b[:, Q] = e @ ((np.eye(3) - np.outer(u, u)) / rho)
         y_b = -(e @ u)
-        r_b = prm.sigma_bearing ** 2 * np.eye(2)
+        sb = prm.sigma_bearing if sigma_bearing is None else sigma_bearing
+        r_b = sb ** 2 * np.eye(2)
         d2_b, ok_b = self._robust_update(h_b, y_b, r_b)
 
         d2_a, ok_a = 0.0, False

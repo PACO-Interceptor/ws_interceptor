@@ -185,14 +185,17 @@ def generate_launch_description():
         condition=IfCondition(use_camera),
     )
 
-    # Montaje de la camara respecto al cuerpo del interceptor (FLU, en metros).
+    # Montaje de la camara de x500_mono_cam respecto a base_link (FLU, metros). En el SDF de
+    # PX4 la camara esta en (0.12, 0.03, 0.242) respecto al ORIGEN DEL MODELO, y base_link
+    # esta 0.24 m por encima de ese origen: respecto a base_link, z = 0.002. Con 0.242 la
+    # estimacion salia 0.24 m alta y el interceptor pasaba por encima de la pelota.
     camera_static_tf_node = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         arguments=[
             '--x', '0.12',
             '--y', '0.03',
-            '--z', '0.242',
+            '--z', '0.002',
             '--qx', '0',
             '--qy', '0',
             '--qz', '0',

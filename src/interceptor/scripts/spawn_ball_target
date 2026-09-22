@@ -6,7 +6,9 @@
 # interceptor corriendo (make px4_sitl gz_x500_mono_cam), que es quien abre Gazebo.
 #
 # Uso: ros2 run interceptor spawn_ball_target [x] [y]   (posicion en Gazebo, ENU; defecto 0 20)
-# Variables: PX4_DIR (defecto ~/PX4-Autopilot), GZ_WORLD (defecto default).
+# Variables: PX4_DIR (defecto ~/PX4-Autopilot), GZ_WORLD (defecto default),
+#   BALL_DIAMETER (defecto: el del modelo, 1.0 m). Con otro diametro se crea una copia
+#   temporal del modelo con ese radio; al evaluador hay que pasarle el mismo true_size.
 set -euo pipefail
 
 X="${1:-0}"
@@ -25,6 +27,18 @@ if [ ! -f "$MODEL_SDF" ]; then
   exit 1
 fi
 MODEL_SDF="$(realpath "$MODEL_SDF")"
+
+if [ -n "${BALL_DIAMETER:-}" ]; then
+  TMP_DIR="$(mktemp -d)"
+  MODEL_DIR="$(dirname "$MODEL_SDF")"
+  RADIUS="$(python3 -c "print(${BALL_DIAMETER} / 2.0)")"
+  sed -e "s|<radius>0.5</radius>|<radius>$RADIUS</radius>|" \
+      -e "s|<albedo_map>materials/|<albedo_map>$MODEL_DIR/materials/|" \
+      "$MODEL_SDF" > "$TMP_DIR/model.sdf"
+  grep -q "<radius>$RADIUS</radius>" "$TMP_DIR/model.sdf" || { echo "No pude cambiar el radio" >&2; exit 1; }
+  MODEL_SDF="$TMP_DIR/model.sdf"
+  echo "Pelota de ${BALL_DIAMETER} m de diametro"
+fi
 
 if ! gz topic -l | grep -q "^/world/$GZ_WORLD/clock"; then
   echo "Gazebo no esta corriendo el mundo '$GZ_WORLD'. Lanza antes el interceptor." >&2

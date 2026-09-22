@@ -101,6 +101,10 @@ def generate_launch_description():
                 'Amplitud de la oscilacion de velocidad en surge y weave [m/s]. Con 1.0 la '
                 'escala converge con un +12 % de sesgo; con 2.5, a +-5 %.')),
         DeclareLaunchArgument(
+            'true_size', default_value='1.0',
+            description='Diametro real de la pelota [m], solo para el evaluador '
+                        '(spawn_ball_target con BALL_DIAMETER).'),
+        DeclareLaunchArgument(
             'size_prior', default_value='0.5',
             description=(
                 'Tamano que el estimador supone al principio [m]. A proposito distinto del '
@@ -154,12 +158,15 @@ def generate_launch_description():
         package='interceptor', executable='target_tf2_odometry',
         parameters=[SIM_TIME], output='screen')
 
-    # Montaje de la camara de x500_mono_cam respecto al cuerpo (FLU, en metros).
+    # Montaje de la camara de x500_mono_cam respecto a base_link (FLU, metros). En el SDF de
+    # PX4 la camara esta en (0.12, 0.03, 0.242) respecto al ORIGEN DEL MODELO, y base_link
+    # esta 0.24 m por encima de ese origen: respecto a base_link, z = 0.002. Con 0.242 la
+    # estimacion salia 0.24 m alta y el interceptor pasaba por encima de la pelota.
     camera_static_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         arguments=[
-            '--x', '0.12', '--y', '0.03', '--z', '0.242',
+            '--x', '0.12', '--y', '0.03', '--z', '0.002',
             '--frame-id', 'interceptor/base_link',
             '--child-frame-id', 'interceptor/camera_link',
         ],
@@ -177,7 +184,7 @@ def generate_launch_description():
     estimation_evaluator = Node(
         package='interceptor', executable='estimation_evaluator',
         parameters=[SIM_TIME, {
-            'true_size': 1.0,
+            'true_size': float_arg('true_size'),
             'ball_offset': [0.0, 0.0, 2.5],
             'csv_path': LaunchConfiguration('csv_path'),
         }],

@@ -6,9 +6,14 @@ tamano no se conoce) con la estimacion de target_estimator, en offboard directo 
 PX4. Fases (ver px4_offboard): CLIMB, SETTLE, PURSUE, HOLD. Dentro de PURSUE:
 
 - Con estimacion reciente: velocidad de guiado.
+- El tramo final se decide con el tiempo hasta el paso calculado con la velocidad
+  relativa (time_to_closest_approach), que no depende del tamano estimado. El t_go del
+  punto de encuentro si depende: con el tamano a la mitad llego a congelar el rumbo 1 s
+  antes de tiempo en Gazebo.
 - En el ultimo freeze_time_s antes del paso congela el rumbo: de muy cerca la direccion
-  al checkpoint gira deprisa y seguirla desvia el paso.
-- Si deja de ver el checkpoint en el tramo final (t_go < terminal_time), o si la
+  al checkpoint gira deprisa y seguirla desvia el paso. Es corto porque, congelado, el
+  error de la velocidad estimada del checkpoint se convierte directamente en fallo.
+- Si deja de ver el checkpoint en el tramo final (< terminal_time), o si la
   estimacion dice que ya lo ha dejado atras, sigue recto con la ultima orden durante
   el t_go que quedaba mas coast_s, y pasa a HOLD. Si iba a ciegas y lo vuelve a ver
   delante, retoma el guiado.
@@ -18,6 +23,7 @@ PX4. Fases (ver px4_offboard): CLIMB, SETTLE, PURSUE, HOLD. Dentro de PURSUE:
 import math
 
 from interceptor.guidance import guidance_velocity, GuidanceParams
+from interceptor.guidance import should_freeze, time_to_closest_approach
 from interceptor.px4_offboard import NAN, Px4OffboardNode
 from interceptor_msgs.msg import TargetEstimate
 import numpy as np
@@ -48,7 +54,7 @@ class CheckpointGuidance(Px4OffboardNode):
         )
         self._pass_radius = self.declare_parameter('pass_radius_m', 5.0).value
         self._coast_time = self.declare_parameter('coast_s', 2.0).value
-        self._freeze_time = self.declare_parameter('freeze_time_s', 1.0).value
+        self._freeze_time = self.declare_parameter('freeze_time_s', 0.5).value
         self._estimate_timeout = self.declare_parameter('estimate_timeout_s', 0.5).value
         self._max_duration = self.declare_parameter('max_duration_s', 60.0).value
         self._min_altitude = self.declare_parameter('min_altitude_m', 3.0).value
@@ -104,10 +110,13 @@ class CheckpointGuidance(Px4OffboardNode):
         r = enu_to_ned(e.position.x, e.position.y, e.position.z) - np.array(self.position)
         v_t = enu_to_ned(e.velocity.x, e.velocity.y, e.velocity.z)
         rel_sigma = math.sqrt(max(e.covariance[48], 0.0)) / max(e.size, 1e-6)
-        v_cmd, t_go, gain = guidance_velocity(r, v_t, rel_sigma, elapsed, self._prm)
-        if t_go < self._freeze_time and self._last_cmd is not None:
+        t_pass = time_to_closest_approach(r, v_t - np.array(self.velocity))
+        v_cmd, _, gain = guidance_velocity(r, v_t, rel_sigma, elapsed, self._prm, t_pass)
+        t_go = t_pass
+        freeze = should_freeze(t_go, e.angular_range, self._freeze_time, self._prm)
+        if freeze and self._last_cmd is not None:
             self._last_t_go = t_go
-            self._start_coast(now, 'rumbo congelado en el ultimo segundo')
+            self._start_coast(now, 'rumbo congelado en el tramo final')
             return [NAN] * 3, self._limit_altitude(self._last_cmd)
         self._last_cmd, self._last_t_go = v_cmd, t_go
 

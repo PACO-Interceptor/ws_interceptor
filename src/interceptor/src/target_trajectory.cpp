@@ -80,6 +80,12 @@ public:
     vehicle_odometry_sub_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
       ns + "/fmu/out/vehicle_odometry", qos,
       [this](const px4_msgs::msg::VehicleOdometry::UniquePtr msg) {
+        altitude_now_m_ = -msg->position[2];
+        if (!takeoff_xy_valid_) {
+          takeoff_north_m_ = msg->position[0];
+          takeoff_east_m_ = msg->position[1];
+          takeoff_xy_valid_ = true;
+        }
         if (phase_ == Phase::CLIMB) {
           // En modo line tambien tiene que haber llegado al inicio de la recta: si ya
           // estaba en el aire en otro sitio, la recta no empieza hasta llegar.
@@ -195,8 +201,11 @@ private:
     msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
 
     if (phase_ == Phase::CLIMB) {
-      msg.position[0] = static_cast<float>(center_north_m_);
-      msg.position[1] = static_cast<float>(center_east_m_);
+      // Hasta media altitud sube en vertical sobre el punto de despegue: ir en diagonal
+      // desde el suelo hacia un inicio lejano puede volcar el dron.
+      const bool low = takeoff_xy_valid_ && altitude_now_m_ < 0.5 * altitude_m_;
+      msg.position[0] = static_cast<float>(low ? takeoff_north_m_ : center_north_m_);
+      msg.position[1] = static_cast<float>(low ? takeoff_east_m_ : center_east_m_);
       msg.position[2] = static_cast<float>(-altitude_m_);
       msg.yaw = 0.0f;
     } else if (phase_ == Phase::LINE) {
@@ -266,6 +275,12 @@ private:
 
   // Estado de control del vehiculo objetivo
   bool flag_armed_{false};
+
+  // Punto de despegue y altitud actual, para subir en vertical al principio.
+  bool takeoff_xy_valid_{false};
+  double takeoff_north_m_{0.0};
+  double takeoff_east_m_{0.0};
+  double altitude_now_m_{0.0};
   bool flag_control_offboard_enabled_{false};
 
   // Control de reintentos de offboard+arm

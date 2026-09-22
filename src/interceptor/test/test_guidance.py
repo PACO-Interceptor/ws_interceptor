@@ -4,7 +4,7 @@ import math
 
 from interceptor.bearing_angle_filter import BearingAngleFilter, FilterParams
 from interceptor.guidance import excitation_gain, guidance_velocity, GuidanceParams
-from interceptor.guidance import intercept_time
+from interceptor.guidance import intercept_time, should_freeze, time_to_closest_approach
 import numpy as np
 import pytest
 
@@ -100,3 +100,36 @@ def test_hitting_does_not_need_scale():
     for seed in range(5):
         min_dist, _ = fly(seed, excitation_amp=0.0)
         assert min_dist < 0.3
+
+
+def test_time_to_closest_approach_head_on():
+    """A 12 m acercandose a 3 m/s: 4 s. Si se aleja, infinito."""
+    r = np.array([12.0, 0.0, 0.0])
+    assert time_to_closest_approach(r, np.array([-3.0, 0.0, 0.0])) == pytest.approx(4.0)
+    assert time_to_closest_approach(r, np.array([3.0, 0.0, 0.0])) == math.inf
+
+
+def test_time_to_closest_approach_is_scale_free():
+    """
+    No cambia si el tamano esta mal estimado.
+
+    Con un factor de escala k, el filtro da r y v_rel multiplicados por k (v_rel = l q').
+    intercept_time, que mezcla la velocidad del interceptor en metros, si cambia.
+    """
+    r, v_t, v_own = np.array([3.0, 14.0, 2.5]), np.array([1.0, 0.0, 0.0]), np.array([0, 3.0, 0])
+    v_rel = v_t - v_own
+    t_true = time_to_closest_approach(r, v_rel)
+    for k in (0.4, 2.0):
+        assert time_to_closest_approach(k * r, k * v_rel) == pytest.approx(t_true)
+    # El t_go del punto de encuentro si cambia con la escala.
+    for k in (0.5, 2.0):
+        t_k = intercept_time(k * r, k * v_rel + v_own, 3.0)
+        assert abs(t_k - intercept_time(r, v_t, 3.0)) > 0.4
+
+
+def test_should_freeze_needs_close_checkpoint():
+    """Un t_go corto por ruido con el checkpoint lejos (12 tamanos) no congela."""
+    prm = GuidanceParams()
+    assert should_freeze(0.3, 2.0, 0.5, prm)
+    assert not should_freeze(0.3, 12.0, 0.5, prm)
+    assert not should_freeze(2.0, 2.0, 0.5, prm)

@@ -9,7 +9,8 @@ fases:
     CLIMB   sube a altitude_m sobre (start_north_m, start_east_m)
     SETTLE  espera start_delay_s quieto
     <fase activa>  la subclase decide el setpoint (active_setpoint)
-    HOLD    se queda quieto donde este
+    HOLD    se queda quieto donde este, tambien en altura (bajar a altitude_m podria
+            dejarlo en la trayectoria de lo que perseguia)
 
 Al entrar en la fase activa reinicia target_estimator (servicio target_estimator/reset):
 el despegue ya es una aceleracion del observador y la estimacion llegaria contaminada.
@@ -140,7 +141,8 @@ class Px4OffboardNode(Node):
                 return
             self.set_phase('HOLD')
 
-        self.publish_setpoint([self.hold[0], self.hold[1], -self.altitude], [NAN] * 3)
+        z = self.hold[2] if self.phase == 'HOLD' else -self.altitude
+        self.publish_setpoint([self.hold[0], self.hold[1], z], [NAN] * 3)
 
     def _request_estimator_reset(self) -> None:
         """Pide a target_estimator que olvide lo estimado hasta ahora."""

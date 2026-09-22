@@ -83,6 +83,9 @@ def generate_launch_description():
             'speed_mps', default_value='3.0',
             description='Velocidad del interceptor en mode:=guidance [m/s].'),
         DeclareLaunchArgument(
+            'freeze_time_s', default_value='0.5',
+            description='En mode:=guidance, segundos antes del paso en que congela el rumbo.'),
+        DeclareLaunchArgument(
             'excitation_amp_mps', default_value='2.0',
             description='Amplitud de la excitacion lateral en mode:=guidance (0 = sin ella).'),
         DeclareLaunchArgument(
@@ -217,6 +220,7 @@ def generate_launch_description():
             'altitude_m': 10.0,
             'speed_mps': float_arg('speed_mps'),
             'excitation_amp_mps': float_arg('excitation_amp_mps'),
+            'freeze_time_s': float_arg('freeze_time_s'),
             'start_delay_s': 10.0,
             'start_north_m': 0.0,
             'start_east_m': 0.0,

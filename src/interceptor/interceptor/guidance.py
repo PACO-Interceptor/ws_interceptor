@@ -49,6 +49,10 @@ class GuidanceParams:
     terminal_time: float = 4.0
     # Limite de velocidad vertical [m/s].
     max_vertical_speed: float = 1.5
+    # Congelar el rumbo exige ademas ver el checkpoint grande: distancia menor que
+    # freeze_max_angular_range tamanos de checkpoint (sin escala). Evita congelar lejos
+    # cuando la velocidad estimada aun es ruido (recien reiniciado el estimador).
+    freeze_max_angular_range: float = 8.0
 
 
 def intercept_time(r: np.ndarray, v_t: np.ndarray, speed: float) -> Optional[float]:
@@ -71,6 +75,28 @@ def intercept_time(r: np.ndarray, v_t: np.ndarray, speed: float) -> Optional[flo
     return min(roots) if roots else None
 
 
+def time_to_closest_approach(r: np.ndarray, v_rel: np.ndarray) -> float:
+    """
+    Tiempo hasta la maxima aproximacion con la velocidad relativa actual (inf si se aleja).
+
+    r es la posicion del checkpoint relativa al interceptor y v_rel = v_checkpoint -
+    v_interceptor. A diferencia de intercept_time, no mezcla la velocidad del interceptor
+    (en metros) con la distancia estimada: r y v_rel escalan con el mismo factor si el
+    tamano esta mal estimado, y el cociente no cambia.
+    """
+    vv = float(v_rel @ v_rel)
+    if vv < 1e-9:
+        return math.inf
+    t = -float(r @ v_rel) / vv
+    return t if t > 0.0 else math.inf
+
+
+def should_freeze(time_to_pass: float, angular_range: float, freeze_time: float,
+                  prm: GuidanceParams) -> bool:
+    """Indica si toca congelar el rumbo: paso inminente y checkpoint visto de cerca."""
+    return time_to_pass < freeze_time and angular_range < prm.freeze_max_angular_range
+
+
 def excitation_gain(size_rel_sigma: float, t_go: float, prm: GuidanceParams) -> float:
     """Fraccion [0, 1] de la excitacion segun la incertidumbre del tamano y t_go."""
     if t_go <= prm.terminal_time:
@@ -85,6 +111,7 @@ def guidance_velocity(
     size_rel_sigma: float,
     tau: float,
     prm: GuidanceParams,
+    time_to_pass: Optional[float] = None,
 ) -> Tuple[np.ndarray, float, float]:
     """
     Velocidad de mando (NED) hacia el punto de encuentro, con la excitacion sumada.
@@ -94,6 +121,8 @@ def guidance_velocity(
     :param size_rel_sigma: sigma/tamano de la estimacion.
     :param tau: Tiempo [s] que marca la fase de la oscilacion de excitacion.
     :param prm: Parametros.
+    :param time_to_pass: Tiempo hasta el paso para apagar la excitacion en el tramo
+        final; por defecto, el t_go del punto de encuentro (que depende de la escala).
     :return: (velocidad de mando, t_go, fraccion de excitacion aplicada).
     """
     t_go = intercept_time(r, v_t, prm.speed)
@@ -106,7 +135,7 @@ def guidance_velocity(
     direction = aim / norm if norm > 1e-6 else np.zeros(3)
     v_cmd = prm.speed * direction
 
-    gain = excitation_gain(size_rel_sigma, t_go, prm)
+    gain = excitation_gain(size_rel_sigma, t_go if time_to_pass is None else time_to_pass, prm)
     lateral = np.cross(direction, DOWN)
     lateral_norm = float(np.linalg.norm(lateral))
     if gain > 0.0 and lateral_norm > 1e-6:

@@ -7,7 +7,12 @@ setpoint, el yaw que sigue al objetivo con el bearing de la camara y la secuenci
 fases:
 
     CLIMB   sube a altitude_m sobre (start_north_m, start_east_m)
-    SETTLE  espera start_delay_s quieto
+    ALIGN   si PX4 aun no se fia de su rumbo (sigma de yaw > align_max_yaw_std_deg), va y
+            viene align_amplitude_m al este y al oeste hasta que converja: el EKF corrige
+            el rumbo con aceleraciones horizontales. Sin esto, el primer vuelo tras
+            arrancar PX4 empezaba el ataque con ~10 grados de incertidumbre de rumbo y el
+            EKF lo corregia en plena persecucion (falla del estimador y del paso)
+    SETTLE  espera start_delay_s quieto en el punto de inicio
     <fase activa>  la subclase decide el setpoint (active_setpoint)
     HOLD    se queda quieto donde este, tambien en altura (bajar a altitude_m podria
             dejarlo en la trayectoria de lo que perseguia)
@@ -58,6 +63,11 @@ class Px4OffboardNode(Node):
             self.declare_parameter('start_east_m', NAN).value,
         )
         self._active_phase = active_phase
+        self._align_max_yaw_std = math.radians(
+            self.declare_parameter('align_max_yaw_std_deg', 2.0).value)
+        self._align_amplitude = self.declare_parameter('align_amplitude_m', 2.0).value
+        self._align_period = self.declare_parameter('align_period_s', 3.0).value
+        self._align_timeout = self.declare_parameter('align_timeout_s', 60.0).value
 
         self._offboard_pub = self.create_publisher(
             OffboardControlMode, f'{ns}/fmu/in/offboard_control_mode', 10)
@@ -79,6 +89,7 @@ class Px4OffboardNode(Node):
         self.position = None        # NED [m]
         self.velocity = None        # NED [m/s]
         self.yaw = None             # NED [rad]
+        self.yaw_std = None         # incertidumbre del yaw segun PX4 [rad]
         self.yaw_setpoint = 0.0
         self._armed = False
         self._offboard = False
@@ -127,7 +138,27 @@ class Px4OffboardNode(Node):
             horizontal = math.hypot(
                 self.position[0] - self.hold[0], self.position[1] - self.hold[1])
             if abs(self.position[2] + self.altitude) < 0.5 and horizontal < 1.0:
+                self.set_phase('ALIGN')
+                self._align_center = list(self.hold)
+        elif self.phase == 'ALIGN':
+            aligned = self.yaw_std is not None and self.yaw_std < self._align_max_yaw_std
+            if aligned or elapsed >= self._align_timeout:
+                if aligned:
+                    self.get_logger().info(
+                        f'Rumbo alineado (sigma yaw {math.degrees(self.yaw_std):.1f} grados) '
+                        f'tras {elapsed:.0f} s.')
+                else:
+                    self.get_logger().warning(
+                        'El rumbo no converge; se sigue sin alinear (sigma yaw '
+                        f'{math.degrees(self.yaw_std or math.nan):.1f} grados).')
                 self.set_phase('SETTLE')
+                self.hold[0], self.hold[1] = self._align_center[0], self._align_center[1]
+            else:
+                side = 1.0 if int(elapsed // self._align_period) % 2 == 0 else -1.0
+                self.publish_setpoint(
+                    [self._align_center[0], self._align_center[1] + side * self._align_amplitude,
+                     -self.altitude], [NAN] * 3)
+                return
         elif self.phase == 'SETTLE' and elapsed >= self._start_delay:
             self.set_phase(self._active_phase)
             self._request_estimator_reset()
@@ -161,6 +192,8 @@ class Px4OffboardNode(Node):
         """Guarda posicion, velocidad y yaw propios (NED)."""
         self.position = [float(c) for c in msg.position]
         self.velocity = [float(c) for c in msg.velocity]
+        if math.isfinite(msg.orientation_variance[2]):
+            self.yaw_std = math.sqrt(max(msg.orientation_variance[2], 0.0))
         if not math.isnan(msg.q[0]):
             self.yaw = yaw_from_quaternion(msg.q)
 

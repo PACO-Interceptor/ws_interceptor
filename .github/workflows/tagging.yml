@@ -14,12 +14,19 @@ jobs:
   release:
     name: Generate Tag & Release
     runs-on: ubuntu-24.04
+    # Only release commits whose CI completed successfully.  workflow_run runs
+    # from the default branch, so use the triggering CI commit explicitly below
+    # instead of accidentally tagging a newer commit on main.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - name: Checkout repo
+      - name: Checkout tested commit
         uses: actions/checkout@v4
         with:
+          # workflow_run's default ref is the workflow's default branch, not
+          # necessarily the commit that CI just tested.
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Generate semantic tag
         id: tagger
@@ -27,7 +34,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WITH_V: true
-          DEFAULT_BUMP: none
+          # A merge containing no explicit major/minor marker still represents
+          # a releasable change.  The previous value (none) silently skipped
+          # releases for ordinary feature merge commits.
+          DEFAULT_BUMP: patch
 
       - name: Create GitHub Release
         if: steps.tagger.outputs.new_tag != ''

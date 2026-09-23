@@ -10,6 +10,8 @@ PX4. Fases (ver px4_offboard): CLIMB, SETTLE, PURSUE, HOLD. Dentro de PURSUE:
   relativa (time_to_closest_approach), que no depende del tamano estimado. El t_go del
   punto de encuentro si depende: con el tamano a la mitad llego a congelar el rumbo 1 s
   antes de tiempo en Gazebo.
+- Frena en la aproximacion final (interceptor.guidance.approach_speed): a 3 m/s el
+  tramo a ciegas del final mide metro y medio, demasiado para un checkpoint pequeno.
 - En el ultimo freeze_time_s antes del paso congela el rumbo: de muy cerca la direccion
   al checkpoint gira deprisa y seguirla desvia el paso. Es corto porque, congelado, el
   error de la velocidad estimada del checkpoint se convierte directamente en fallo.
@@ -55,10 +57,14 @@ class CheckpointGuidance(Px4OffboardNode):
                 'excitation_freq_hz', defaults.excitation_freq).value,
             terminal_time=self.declare_parameter(
                 'terminal_time_s', defaults.terminal_time).value,
+            terminal_speed=self.declare_parameter(
+                'terminal_speed_mps', defaults.terminal_speed).value,
+            slowdown_time=self.declare_parameter(
+                'slowdown_time_s', defaults.slowdown_time).value,
         )
         self._pass_radius = self.declare_parameter('pass_radius_m', 5.0).value
         self._coast_time = self.declare_parameter('coast_s', 2.0).value
-        self._freeze_time = self.declare_parameter('freeze_time_s', 0.5).value
+        self._freeze_time = self.declare_parameter('freeze_time_s', 0.3).value
         self._estimate_timeout = self.declare_parameter('estimate_timeout_s', 0.5).value
         self._max_duration = self.declare_parameter('max_duration_s', 60.0).value
         self._min_altitude = self.declare_parameter('min_altitude_m', 3.0).value

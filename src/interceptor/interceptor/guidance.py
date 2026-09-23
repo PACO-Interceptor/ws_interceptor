@@ -38,6 +38,10 @@ class GuidanceParams:
 
     # Velocidad del interceptor hacia el punto de encuentro [m/s].
     speed: float = 3.0
+    # En los ultimos slowdown_time segundos baja hasta terminal_speed: a 3 m/s el tramo
+    # final a ciegas mide metro y medio, demasiado para un checkpoint pequeno.
+    terminal_speed: float = 1.2
+    slowdown_time: float = 2.5
     # Amplitud y frecuencia de la oscilacion lateral de excitacion [m/s], [Hz].
     excitation_amp: float = 2.0
     excitation_freq: float = 0.25
@@ -97,6 +101,14 @@ def should_freeze(time_to_pass: float, angular_range: float, freeze_time: float,
     return time_to_pass < freeze_time and angular_range < prm.freeze_max_angular_range
 
 
+def approach_speed(time_to_pass: float, prm: GuidanceParams) -> float:
+    """Velocidad de aproximacion: baja linealmente a terminal_speed al acercarse el paso."""
+    if not math.isfinite(time_to_pass) or time_to_pass >= prm.slowdown_time:
+        return prm.speed
+    f = max(time_to_pass, 0.0) / prm.slowdown_time
+    return prm.terminal_speed + f * (prm.speed - prm.terminal_speed)
+
+
 def excitation_gain(size_rel_sigma: float, t_go: float, prm: GuidanceParams) -> float:
     """Fraccion [0, 1] de la excitacion segun la incertidumbre del tamano y t_go."""
     if t_go <= prm.terminal_time:
@@ -125,15 +137,16 @@ def guidance_velocity(
         final; por defecto, el t_go del punto de encuentro (que depende de la escala).
     :return: (velocidad de mando, t_go, fraccion de excitacion aplicada).
     """
-    t_go = intercept_time(r, v_t, prm.speed)
+    speed = approach_speed(time_to_pass if time_to_pass is not None else math.inf, prm)
+    t_go = intercept_time(r, v_t, speed)
     if t_go is None:
-        t_go = float(np.linalg.norm(r)) / prm.speed   # persecucion pura como respaldo
+        t_go = float(np.linalg.norm(r)) / speed       # persecucion pura como respaldo
         aim = r
     else:
         aim = r + v_t * t_go
     norm = float(np.linalg.norm(aim))
     direction = aim / norm if norm > 1e-6 else np.zeros(3)
-    v_cmd = prm.speed * direction
+    v_cmd = speed * direction
 
     gain = excitation_gain(size_rel_sigma, t_go if time_to_pass is None else time_to_pass, prm)
     lateral = np.cross(direction, DOWN)

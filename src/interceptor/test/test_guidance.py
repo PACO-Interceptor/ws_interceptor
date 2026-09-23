@@ -3,7 +3,8 @@
 import math
 
 from interceptor.bearing_angle_filter import BearingAngleFilter, FilterParams
-from interceptor.guidance import excitation_gain, guidance_velocity, GuidanceParams
+from interceptor.guidance import approach_speed, excitation_gain, guidance_velocity
+from interceptor.guidance import GuidanceParams
 from interceptor.guidance import intercept_time, should_freeze, time_to_closest_approach
 import numpy as np
 import pytest
@@ -133,3 +134,21 @@ def test_should_freeze_needs_close_checkpoint():
     assert should_freeze(0.3, 2.0, 0.5, prm)
     assert not should_freeze(0.3, 12.0, 0.5, prm)
     assert not should_freeze(2.0, 2.0, 0.5, prm)
+
+
+def test_approach_speed_slows_down_near_the_pass():
+    """Lejos va a speed; al llegar el paso, a terminal_speed; en medio, intermedio."""
+    prm = GuidanceParams()
+    assert approach_speed(math.inf, prm) == prm.speed
+    assert approach_speed(prm.slowdown_time + 1.0, prm) == prm.speed
+    assert approach_speed(0.0, prm) == pytest.approx(prm.terminal_speed)
+    medio = approach_speed(prm.slowdown_time / 2, prm)
+    assert prm.terminal_speed < medio < prm.speed
+
+
+def test_guidance_velocity_uses_the_slower_speed_at_the_end():
+    """Con el paso inminente, el modulo de la orden es el de terminal_speed."""
+    prm = GuidanceParams()
+    r, v = np.array([3.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])
+    v_cmd, _, _ = guidance_velocity(r, v, 0.0, 0.0, prm, time_to_pass=0.0)
+    assert np.linalg.norm(v_cmd) == pytest.approx(prm.terminal_speed)

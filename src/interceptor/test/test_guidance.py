@@ -4,8 +4,9 @@ import math
 
 from interceptor.bearing_angle_filter import BearingAngleFilter, FilterParams
 from interceptor.guidance import approach_speed, excitation_gain, guidance_velocity
-from interceptor.guidance import GuidanceParams
+from interceptor.guidance import CommitGate, gated_velocity, GuidanceParams, hold_off
 from interceptor.guidance import intercept_time, should_freeze, time_to_closest_approach
+from interceptor.guidance import time_to_contact
 import numpy as np
 import pytest
 
@@ -169,3 +170,158 @@ def test_approach_speed_keeps_margin_over_the_estimated_target_speed():
     assert approach_speed(0.0, rapido, prm) == pytest.approx(prm.terminal_speed_margin * rapido)
     # Nunca por encima de la velocidad de crucero, aunque el checkpoint parezca muy rapido.
     assert approach_speed(0.0, 100.0, prm) == pytest.approx(prm.speed)
+
+
+def test_time_to_contact_is_infinite_when_the_checkpoint_passes_by():
+    """
+    De frente: distancia entre cierre. Cruzando lejos por delante: infinito.
+
+    El tiempo hasta la maxima aproximacion, en cambio, llega a cero al cruzar, aunque
+    el checkpoint pase a 20 m: en Gazebo apagaba la excitacion desde el principio.
+    """
+    r = np.array([12.0, 0.0, 0.0])
+    assert time_to_contact(r, np.array([-3.0, 0.0, 0.0])) == pytest.approx(4.0)
+    abeam, crossing = np.array([20.0, 0.0, 0.0]), np.array([0.0, 2.0, 0.0])
+    assert time_to_contact(abeam, crossing) == math.inf
+    assert time_to_closest_approach(abeam, crossing) == math.inf
+    just_before = np.array([20.0, -0.5, 0.0])
+    assert time_to_closest_approach(just_before, crossing) < 0.5
+    assert time_to_contact(just_before, crossing) > 100.0
+
+
+def test_hold_off_caps_closing_and_keeps_the_lateral_part():
+    """Observando no avanza hacia el checkpoint a mas de observe_speed; lo lateral queda."""
+    prm = GuidanceParams()
+    r, v_cmd = np.array([30.0, 0.0, 0.0]), np.array([3.0, 1.5, 0.0])
+    out = hold_off(v_cmd, r, np.zeros(3), np.zeros(3), 10.0, prm)
+    assert out[0] == pytest.approx(prm.observe_speed)
+    assert out[1] == pytest.approx(1.5)
+
+
+def test_hold_off_lets_it_approach_until_the_checkpoint_is_seen_well():
+    """
+    Lejos (mas de observe_max_angular_range tamanos) no limita a observe_speed.
+
+    Desde ahi el detector apenas ve la pelota: en Gazebo el interceptor se quedo
+    observando a 30 m, perdio el checkpoint cada pocos segundos y no llego a comprometerse.
+    """
+    prm = GuidanceParams()
+    r, v_cmd = np.array([30.0, 0.0, 0.0]), np.array([3.0, 0.0, 0.0])
+    far = prm.observe_max_angular_range + 50.0
+    out = hold_off(v_cmd, r, np.zeros(3), np.zeros(3), far, prm)
+    assert out == pytest.approx(v_cmd)
+
+
+def test_hold_off_backs_away_when_contact_is_too_close():
+    """Con el contacto antes de standoff_time, pide cerrar mas despacio que ahora."""
+    prm = GuidanceParams()
+    r, v_t, v_own = np.array([10.0, 0.0, 0.0]), np.array([-2.0, 0.0, 0.0]), np.zeros(3)
+    assert time_to_contact(r, v_t - v_own) < prm.standoff_time
+    out = hold_off(np.array([3.0, 0.0, 0.0]), r, v_t, v_own, 100.0, prm)
+    assert out[0] < 0.0
+    assert out[0] >= -prm.speed
+
+
+def test_hold_off_equilibrium_does_not_depend_on_scale():
+    """
+    La retencion solo usa el tiempo hasta el contacto y la velocidad propia.
+
+    Con el tamano mal estimado por k, r y v_rel salen por k y la orden no cambia.
+    """
+    prm = GuidanceParams()
+    r, v_t, v_own = np.array([12.0, 3.0, 0.0]), np.array([-1.0, 0.5, 0.0]), np.array([1.0, 0, 0])
+    v_cmd = np.array([3.0, 0.0, 0.0])
+    ref = hold_off(v_cmd, r, v_t, v_own, 10.0, prm)
+    for k in (0.4, 2.5):
+        v_t_k = k * (v_t - v_own) + v_own      # v_rel escala con k; v_own es de PX4
+        assert hold_off(v_cmd, k * r, v_t_k, v_own, 10.0, prm) == pytest.approx(ref)
+
+
+def test_commit_gate_waits_for_the_size_sigma():
+    """Con la sigma alta sigue observando; por debajo del umbral se compromete y no vuelve."""
+    prm = GuidanceParams()
+    gate = CommitGate(prm)
+    assert not gate.update(0.58, 20.0, 0.1)
+    assert not gate.committed
+    assert gate.update(prm.sigma_rel_commit - 0.01, 20.0, 0.1)
+    assert gate.committed and not gate.forced
+    assert not gate.update(0.9, 20.0, 0.1)
+    assert gate.committed
+
+
+def test_commit_gate_forces_when_it_cannot_keep_the_distance():
+    """Contacto por debajo de terminal_time durante forced_commit_hold: compromiso forzado."""
+    prm = GuidanceParams()
+    gate = CommitGate(prm)
+    short = prm.terminal_time - 1.0
+    assert not gate.update(0.5, short, prm.forced_commit_hold / 2)
+    assert not gate.update(0.5, 20.0, prm.forced_commit_hold / 2)     # se recupera
+    assert not gate.update(0.5, short, prm.forced_commit_hold / 2)
+    assert gate.update(0.5, short, prm.forced_commit_hold / 2 + 0.01)
+    assert gate.forced
+
+
+def test_commit_gate_forces_after_max_observe_time():
+    """Si la sigma no baja nunca, se compromete igualmente al agotar max_observe_time."""
+    prm = GuidanceParams()
+    gate = CommitGate(prm)
+    assert not gate.update(0.5, 20.0, prm.max_observe_time - 1.0)
+    assert gate.update(0.5, 20.0, 1.0)
+    assert gate.forced
+
+
+def fly_gated(seed, v_t, p_t, size=0.3, prior=1.0, rate=11.0, duration=40.0):
+    """
+    Bucle cerrado con puerta de compromiso: devuelve (distancia minima, puerta).
+
+    Como fly(), pero con el checkpoint pequeno y el prior de tamano 3 veces mas grande,
+    y el guiado de gated_velocity. Deja de ver el checkpoint por debajo de 1 m.
+    """
+    rng = np.random.default_rng(seed)
+    filt = BearingAngleFilter(FilterParams(size_prior=prior))
+    prm = GuidanceParams()
+    gate = CommitGate(prm)
+    dt = 1.0 / rate
+    p_i, v_i, v_cmd = np.array([0.0, 0.0, -10.0]), np.zeros(3), np.zeros(3)
+    p_t, v_t = np.array(p_t, dtype=float), np.array(v_t, dtype=float)
+    min_dist, seen = math.inf, True
+    for k in range(int(duration * rate)):
+        rel = p_t - p_i
+        dist = float(np.linalg.norm(rel))
+        min_dist = min(min_dist, dist)
+        seen = seen and dist > 1.0
+        if seen:
+            g = rel / dist + rng.normal(0.0, 0.01, 3)
+            theta = 2.0 * math.asin(0.5 * size / dist) + rng.normal(0.0, 0.002)
+            filt.predict(dt if k else 0.0, p_i)
+            filt.update(p_i, g, theta)
+            rel_sigma = math.sqrt(filt.physical_covariance()[6, 6]) / filt.size
+            v_cmd, _, _ = gated_velocity(gate, filt.position - p_i, filt.velocity, v_i,
+                                         rel_sigma, filt.angular_range, k * dt, dt, prm)
+        a = (v_cmd - v_i) / 0.6
+        if np.linalg.norm(a) > 4.0:
+            a *= 4.0 / np.linalg.norm(a)
+        v_i = v_i + a * dt
+        p_i = p_i + v_i * dt
+        p_t = p_t + v_t * dt
+    return min_dist, gate
+
+
+@pytest.mark.parametrize('v_t, p_t', [
+    ((0.0, 2.0, 0.0), (20.0, -15.0, -12.5)),     # cruza a 2 m/s, como en Gazebo
+    ((0.0, 1.0, 0.0), (20.0, -15.0, -12.5)),     # cruza a 1 m/s
+    ((0.0, 0.0, 0.0), (20.0, -5.0, -12.5)),      # quieto
+])
+def test_closed_loop_commits_only_with_the_scale_known(v_t, p_t):
+    """
+    Con la puerta, se compromete por sigma (no a la fuerza) y pasa por el checkpoint.
+
+    Pelota de 0.30 m con prior de 1.0 m: sin la puerta, a 2 m/s el tramo final
+    empezaba con sigma del 60-70 %.
+    """
+    prm = GuidanceParams()
+    for seed in range(3):
+        min_dist, gate = fly_gated(seed, v_t, p_t)
+        assert gate.committed and not gate.forced
+        assert gate.commit_sigma < prm.sigma_rel_commit
+        assert min_dist < 0.15

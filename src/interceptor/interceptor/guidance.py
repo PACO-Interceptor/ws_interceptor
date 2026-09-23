@@ -19,6 +19,15 @@ oscilacion lateral (excitacion) cuya amplitud depende de lo mal que se conoce el
 tamano: plena por encima de sigma_rel_start, nula por debajo de sigma_rel_done, y nula
 en los ultimos terminal_time segundos para no desviar el paso final.
 
+No comprometerse hasta saber: mientras la incertidumbre relativa del tamano (sigma del
+filtro, nunca la verdad) siga por encima de sigma_rel_commit, el interceptor OBSERVA:
+excita y se acerca, pero no deja que el tiempo hasta el contacto (distancia entre
+velocidad de cierre) baje de standoff_time
+(tramo final + frenado), retrocediendo si hace falta. Solo con la escala conocida
+ATACA con el guiado de siempre. Si no puede esperar (el checkpoint se le echa encima
+mas rapido de lo que puede apartarse, o la sigma no baja en max_observe_time), se
+compromete igualmente y lo dice (CommitGate).
+
 Todo en NED (el frame de PX4), metros y segundos. Sin ROS: el nodo esta en
 checkpoint_guidance.py.
 """
@@ -61,6 +70,35 @@ class GuidanceParams:
     # freeze_max_angular_range tamanos de checkpoint (sin escala). Evita congelar lejos
     # cuando la velocidad estimada aun es ruido (recien reiniciado el estimador).
     freeze_max_angular_range: float = 8.0
+    # Por debajo de esta sigma/tamano se da la escala por conocida y se ataca. Es el
+    # mismo nivel al que la excitacion empieza a reducirse: por encima, el propio guiado
+    # ya considera que el tamano no se conoce.
+    sigma_rel_commit: float = 0.15
+    # Sin escala conocida, compromiso forzado si el tiempo hasta el contacto se queda por
+    # debajo de terminal_time durante forced_commit_hold segundos (no se ha podido
+    # mantener la distancia), o si se lleva max_observe_time observando.
+    forced_commit_hold: float = 0.5
+    max_observe_time: float = 25.0
+    # Ganancia de la retencion al observar [m/s por s de error en el tiempo hasta el
+    # contacto].
+    standoff_gain: float = 0.5
+    # Velocidad maxima de acercamiento propio al observar [m/s]. Con el tamano mal
+    # estimado, el filtro confunde el avance propio con movimiento del checkpoint y el
+    # tiempo hasta el contacto sale optimista (68 s estimados con 7 s reales y el tamano
+    # 3 veces sobreestimado, lazo sintetico); la escala la da la excitacion lateral, no
+    # el avance.
+    observe_speed: float = 1.0
+    # ... pero solo cuando el checkpoint ya se ve bien: a menos de
+    # observe_max_angular_range tamanos (sin escala; 25 tamanos son 40 mrad, 21 px con la
+    # camara de 1280 px y 1.74 rad de campo). Por debajo de ~25 mrad (13 px) el detector
+    # pasa mas de la mitad del tiempo sin ver nada (vuelos de Gazebo, cualquier pelota),
+    # y observar desde ahi es solo perder detecciones y reiniciar el filtro.
+    observe_max_angular_range: float = 25.0
+
+    @property
+    def standoff_time(self) -> float:
+        """Tiempo hasta el contacto que se guarda al observar: tramo final mas frenado."""
+        return self.terminal_time + self.slowdown_time
 
 
 def intercept_time(r: np.ndarray, v_t: np.ndarray, speed: float) -> Optional[float]:
@@ -169,3 +207,124 @@ def guidance_velocity(
 
     v_cmd[2] = min(max(v_cmd[2], -prm.max_vertical_speed), prm.max_vertical_speed)
     return v_cmd, t_go, gain
+
+
+def time_to_contact(r: np.ndarray, v_rel: np.ndarray) -> float:
+    """
+    Distancia entre velocidad de cierre: cuanto falta para llegar al checkpoint.
+
+    Es infinito si no se cierra distancia.
+    A diferencia de time_to_closest_approach, no llega a cero cuando el checkpoint pasa
+    de largo a distancia. Tambien es libre de escala.
+    """
+    dist = float(np.linalg.norm(r))
+    closing = -float(r @ v_rel) / dist if dist > 1e-6 else 0.0
+    return dist / closing if closing > 1e-6 else math.inf
+
+
+def hold_off(v_cmd: np.ndarray, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarray,
+             angular_range: float, prm: GuidanceParams) -> np.ndarray:
+    """
+    Limita la velocidad de cierre de la orden para no bajar de standoff_time.
+
+    Recorta la componente de v_cmd a lo largo de la linea de vision (u = r/|r|) a
+    observe_speed si el checkpoint ya se ve bien (angular_range, distancia en tamanos de
+    checkpoint, por debajo de observe_max_angular_range), y siempre a u.v_own +
+    standoff_gain (tiempo hasta el contacto - standoff_time): si el contacto llegaria
+    antes de standoff_time, pide cerrar mas despacio que ahora (y retroceder si hace
+    falta, como mucho a prm.speed); si llegaria despues, deja acelerar poco a poco. La
+    componente lateral, y con ella la excitacion, no se toca.
+
+    Se realimenta con el tiempo hasta el contacto, que no depende de la escala, y sobre
+    la velocidad propia, que PX4 da en metros: el equilibrio es tiempo hasta el contacto
+    = standoff_time aunque el tamano este mal estimado. Un limite calculado con r y v_t
+    estimados (u.v_t + |r|/standoff_time) no lo cumple: con el tamano 3 veces
+    sobreestimado dejaba cerrar a menos de 4 s en el lazo sintetico.
+    """
+    dist = float(np.linalg.norm(r))
+    if dist < 1e-6:
+        return v_cmd
+    u = r / dist
+    limit = prm.observe_speed if angular_range < prm.observe_max_angular_range else math.inf
+    tau = time_to_contact(r, v_t - v_own)
+    if math.isfinite(tau):
+        limit = min(limit, float(u @ v_own) + prm.standoff_gain * (tau - prm.standoff_time))
+    limit = max(limit, -prm.speed)
+    closing = float(u @ v_cmd)
+    if closing <= limit:
+        return v_cmd
+    out = v_cmd + (limit - closing) * u
+    out[2] = min(max(out[2], -prm.max_vertical_speed), prm.max_vertical_speed)
+    return out
+
+
+class CommitGate:
+    """
+    Decide cuando el interceptor se compromete con la aproximacion final.
+
+    Una vez comprometido no vuelve atras. forced indica si el compromiso fue sin la
+    escala conocida, y reason por que.
+    """
+
+    def __init__(self, prm: GuidanceParams) -> None:
+        """Empieza observando."""
+        self._prm = prm
+        self.committed = False
+        self.forced = False
+        self.reason = ''
+        self.commit_sigma = math.nan
+        self.commit_contact_time = math.nan
+        self._observe_time = 0.0
+        self._short_time = 0.0
+
+    def update(self, size_rel_sigma: float, contact_time: float, dt: float) -> bool:
+        """
+        Actualiza con la sigma relativa del tamano y el tiempo hasta el contacto.
+
+        :return: True solo en el paso en que se compromete.
+        """
+        if self.committed:
+            return False
+        prm = self._prm
+        self._observe_time += dt
+        self._short_time = self._short_time + dt if contact_time < prm.terminal_time else 0.0
+        if size_rel_sigma < prm.sigma_rel_commit:
+            self.reason = 'escala conocida'
+        elif self._short_time >= prm.forced_commit_hold:
+            self.forced, self.reason = True, 'no se puede mantener la distancia'
+        elif self._observe_time >= prm.max_observe_time:
+            self.forced, self.reason = True, 'tiempo maximo de observacion'
+        else:
+            return False
+        self.committed = True
+        self.commit_sigma, self.commit_contact_time = size_rel_sigma, contact_time
+        return True
+
+
+def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarray,
+                   size_rel_sigma: float, angular_range: float, tau: float, dt: float,
+                   prm: GuidanceParams) -> Tuple[np.ndarray, float, float]:
+    """
+    Velocidad de mando observando o atacando, segun decida la puerta de compromiso.
+
+    OBSERVA: excitacion segun la sigma y cierre limitado por hold_off. El tiempo que
+    apaga la excitacion es el de contacto: el de maxima aproximacion llega a cero cuando
+    el checkpoint pasa de largo a distancia, y apagaba la excitacion justo al observar.
+    ATACA: guiado de siempre sin excitacion (el ataque es corto y en el lazo sintetico la
+    oscilacion aun activa llegaba al paso), con el tiempo hasta el paso para el frenado.
+
+    :param v_own: Velocidad del interceptor [m/s] (NED).
+    :param angular_range: Distancia al checkpoint en tamanos de checkpoint (sin escala).
+    :param dt: Tiempo desde la llamada anterior [s], para la puerta.
+    :return: (velocidad de mando, tiempo hasta el paso (atacando) o hasta el contacto
+        (observando), excitacion).
+    """
+    v_rel = v_t - v_own
+    t_contact = time_to_contact(r, v_rel)
+    gate.update(size_rel_sigma, t_contact, dt)
+    if not gate.committed:
+        v_cmd, _, gain = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_contact)
+        return hold_off(v_cmd, r, v_t, v_own, angular_range, prm), t_contact, gain
+    t_pass = time_to_closest_approach(r, v_rel)
+    v_cmd, _, gain = guidance_velocity(r, v_t, 0.0, tau, prm, t_pass)
+    return v_cmd, t_pass, gain

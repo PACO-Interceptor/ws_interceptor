@@ -5,6 +5,12 @@ Usa la ley de interceptor.guidance (rumbo de colision + excitacion lateral mient
 tamano no se conoce) con la estimacion de target_estimator, en offboard directo contra
 PX4. Fases (ver px4_offboard): CLIMB, SETTLE, PURSUE, HOLD. Dentro de PURSUE:
 
+- Primero OBSERVA: excitacion lateral y cierre limitado para no acercarse a menos de
+  standoff_time del contacto. Se compromete con la aproximacion final (ATACA) cuando la
+  sigma relativa del tamano baja de sigma_rel_commit, o a la fuerza si no puede
+  mantener la distancia o se le acaba el tiempo de observar; lo registra en el log (ver
+  interceptor.guidance.gated_velocity y CommitGate). Asi no se lanza con la escala sin
+  converger: a 2 m/s se lanzo con sigma del 58 % y fallo por 1.09 m.
 - Con estimacion reciente: velocidad de guiado.
 - El tramo final se decide con el tiempo hasta el paso calculado con la velocidad
   relativa (time_to_closest_approach), que no depende del tamano estimado. El t_go del
@@ -28,8 +34,7 @@ de 20 Hz), y con el checkpoint en movimiento eso es error lateral directo.
 
 import math
 
-from interceptor.guidance import guidance_velocity, GuidanceParams
-from interceptor.guidance import should_freeze, time_to_closest_approach
+from interceptor.guidance import CommitGate, gated_velocity, GuidanceParams, should_freeze
 from interceptor.px4_offboard import NAN, Px4OffboardNode
 from interceptor_msgs.msg import TargetEstimate
 import numpy as np
@@ -61,6 +66,10 @@ class CheckpointGuidance(Px4OffboardNode):
                 'terminal_speed_mps', defaults.terminal_speed).value,
             slowdown_time=self.declare_parameter(
                 'slowdown_time_s', defaults.slowdown_time).value,
+            sigma_rel_commit=self.declare_parameter(
+                'sigma_rel_commit', defaults.sigma_rel_commit).value,
+            observe_speed=self.declare_parameter(
+                'observe_speed_mps', defaults.observe_speed).value,
         )
         self._pass_radius = self.declare_parameter('pass_radius_m', 5.0).value
         self._coast_time = self.declare_parameter('coast_s', 2.0).value
@@ -79,6 +88,8 @@ class CheckpointGuidance(Px4OffboardNode):
         self._coast_start = None
         self._coast_resumable = False
         self._last_log = -math.inf
+        self._gate = CommitGate(self._prm)
+        self._gate_elapsed = 0.0
         self.create_subscription(
             TargetEstimate, 'interceptor/target_estimate', self._estimate_callback, 10)
 
@@ -93,6 +104,8 @@ class CheckpointGuidance(Px4OffboardNode):
         self._last_cmd = None
         self._last_t_go = math.inf
         self._coast_until = None
+        self._gate = CommitGate(self._prm)
+        self._gate_elapsed = 0.0
 
     def active_setpoint(self, elapsed: float):
         """Velocidad de guiado, recta tras el paso o parada si no hay estimacion."""
@@ -124,9 +137,23 @@ class CheckpointGuidance(Px4OffboardNode):
         r = (enu_to_ned(e.position.x, e.position.y, e.position.z) + v_t * age
              - np.array(self.position))
         rel_sigma = math.sqrt(max(e.covariance[48], 0.0)) / max(e.size, 1e-6)
-        t_pass = time_to_closest_approach(r, v_t - np.array(self.velocity))
-        v_cmd, _, gain = guidance_velocity(r, v_t, rel_sigma, elapsed, self._prm, t_pass)
-        t_go = t_pass
+        committed = self._gate.committed
+        v_cmd, t_go, gain = gated_velocity(self._gate, r, v_t, np.array(self.velocity),
+                                           rel_sigma, e.angular_range, elapsed,
+                                           elapsed - self._gate_elapsed, self._prm)
+        self._gate_elapsed = elapsed
+        if self._gate.committed and not committed:
+            self.get_logger().info(
+                f'{"Compromiso FORZADO" if self._gate.forced else "Compromiso"} '
+                f'({self._gate.reason}): sigma {100 * rel_sigma:3.0f} %  '
+                f'contacto en {self._gate.commit_contact_time:4.1f} s  '
+                f'dist {np.linalg.norm(r):5.1f} m')
+        if not self._gate.committed:
+            # OBSERVA: sin tramo final, asi que ni congelado ni paso a ciegas.
+            self._last_cmd, self._last_t_go = v_cmd, math.inf
+            self._log_status(now, 'observa', t_go, r, e.size, rel_sigma, gain)
+            return [NAN] * 3, self._limit_altitude(v_cmd)
+
         freeze = should_freeze(t_go, e.angular_range, self._freeze_time, self._prm)
         if freeze and self._last_cmd is not None:
             self._last_t_go = t_go
@@ -136,13 +163,19 @@ class CheckpointGuidance(Px4OffboardNode):
 
         if float(r @ v_cmd) < 0.0 and float(np.linalg.norm(r)) < self._pass_radius:
             self._start_coast(now, 'checkpoint estimado detras')
-        elif now - self._last_log >= 1.0:
-            self._last_log = now
-            self.get_logger().info(
-                f't_go {t_go:4.1f} s  dist {np.linalg.norm(r):5.1f} m  '
-                f'tamano {e.size:4.2f} m (sigma {100 * rel_sigma:3.0f} %)  '
-                f'excitacion {100 * gain:3.0f} %')
+        else:
+            self._log_status(now, 'ataca', t_go, r, e.size, rel_sigma, gain)
         return [NAN] * 3, self._limit_altitude(v_cmd)
+
+    def _log_status(self, now, mode, t_go, r, size, rel_sigma, gain) -> None:
+        """Una linea por segundo con el modo, el tiempo que queda y la estimacion."""
+        if now - self._last_log < 1.0:
+            return
+        self._last_log = now
+        self.get_logger().info(
+            f'{mode} t_go {t_go:4.1f} s  dist {np.linalg.norm(r):5.1f} m  '
+            f'tamano {size:4.2f} m (sigma {100 * rel_sigma:3.0f} %)  '
+            f'excitacion {100 * gain:3.0f} %')
 
     def _still_ahead(self) -> bool:
         """Indica si la estimacion pone el checkpoint delante de la ultima orden."""

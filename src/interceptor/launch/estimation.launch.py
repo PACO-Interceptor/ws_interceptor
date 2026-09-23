@@ -111,6 +111,10 @@ def generate_launch_description():
             description='Velocidad del objetivo en su recta [m/s] (solo el banco de pruebas: '
                         'el guiado no conoce este valor).'),
         DeclareLaunchArgument(
+            'target_line_length_m', default_value='30.0',
+            description='Longitud de la recta del objetivo [m] (solo el banco de pruebas). '
+                        'Al acabarla el objetivo frena y se queda quieto.'),
+        DeclareLaunchArgument(
             'true_size', default_value='1.0',
             description='Diametro real de la pelota [m], solo para el evaluador '
                         '(spawn_ball_target con BALL_DIAMETER).'),
@@ -200,7 +204,8 @@ def generate_launch_description():
         }],
         output='screen')
 
-    # Objetivo: parte 15 m al oeste de su origen y cruza 30 m hacia el este a 1 m/s,
+    # Objetivo: parte 15 m al oeste de su origen y cruza target_line_length_m (30 m por
+    # defecto) hacia el este a target_speed_mps,
     # a 20 m al norte del interceptor (spawn_ball_target lo pone en y = 20).
     target_trajectory = Node(
         package='interceptor', executable='target_trajectory',
@@ -211,7 +216,7 @@ def generate_launch_description():
             'center_east_m': -15.0,
             'line_heading_deg': 90.0,
             'line_speed_mps': float_arg('target_speed_mps'),
-            'line_length_m': 30.0,
+            'line_length_m': float_arg('target_line_length_m'),
             'line_start_delay_s': 10.0,
         }],
         output='screen')

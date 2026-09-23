@@ -18,6 +18,10 @@ PX4. Fases (ver px4_offboard): CLIMB, SETTLE, PURSUE, HOLD. Dentro de PURSUE:
   el t_go que quedaba mas coast_s, y pasa a HOLD. Si iba a ciegas y lo vuelve a ver
   delante, retoma el guiado.
 - Si lo pierde lejos, se para en el sitio hasta volver a verlo.
+
+La estimacion se extrapola con su velocidad hasta el instante actual: entre la captura
+de la imagen y el uso de la estimacion pasan decenas de ms (YOLO, transporte y el lazo
+de 20 Hz), y con el checkpoint en movimiento eso es error lateral directo.
 """
 
 import math
@@ -58,6 +62,8 @@ class CheckpointGuidance(Px4OffboardNode):
         self._estimate_timeout = self.declare_parameter('estimate_timeout_s', 0.5).value
         self._max_duration = self.declare_parameter('max_duration_s', 60.0).value
         self._min_altitude = self.declare_parameter('min_altitude_m', 3.0).value
+        # Retraso entre la captura de la imagen y la llegada de la estimacion [s].
+        self._estimate_latency = self.declare_parameter('estimate_latency_s', 0.06).value
 
         self._estimate = None
         self._estimate_time = -math.inf
@@ -107,8 +113,10 @@ class CheckpointGuidance(Px4OffboardNode):
             return [NAN] * 3, [0.0, 0.0, 0.0]
 
         e = self._estimate
-        r = enu_to_ned(e.position.x, e.position.y, e.position.z) - np.array(self.position)
         v_t = enu_to_ned(e.velocity.x, e.velocity.y, e.velocity.z)
+        age = now - self._estimate_time + self._estimate_latency
+        r = (enu_to_ned(e.position.x, e.position.y, e.position.z) + v_t * age
+             - np.array(self.position))
         rel_sigma = math.sqrt(max(e.covariance[48], 0.0)) / max(e.size, 1e-6)
         t_pass = time_to_closest_approach(r, v_t - np.array(self.velocity))
         v_cmd, _, gain = guidance_velocity(r, v_t, rel_sigma, elapsed, self._prm, t_pass)

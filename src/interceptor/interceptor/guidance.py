@@ -39,9 +39,13 @@ class GuidanceParams:
     # Velocidad del interceptor hacia el punto de encuentro [m/s].
     speed: float = 3.0
     # En los ultimos slowdown_time segundos baja hasta terminal_speed: a 3 m/s el tramo
-    # final a ciegas mide metro y medio, demasiado para un checkpoint pequeno.
+    # final a ciegas mide metro y medio, demasiado para un checkpoint pequeno. Nunca baja
+    # de terminal_speed_margin veces la velocidad ESTIMADA del checkpoint: con poco margen
+    # sobre ella, la geometria de intercepcion se vuelve muy sensible. Ese limite sale de
+    # la estimacion de a bordo, no de la velocidad real, que en vuelo no se conoce.
     terminal_speed: float = 1.2
-    slowdown_time: float = 2.5
+    terminal_speed_margin: float = 1.8
+    slowdown_time: float = 3.0
     # Amplitud y frecuencia de la oscilacion lateral de excitacion [m/s], [Hz].
     excitation_amp: float = 2.0
     excitation_freq: float = 0.25
@@ -101,12 +105,19 @@ def should_freeze(time_to_pass: float, angular_range: float, freeze_time: float,
     return time_to_pass < freeze_time and angular_range < prm.freeze_max_angular_range
 
 
-def approach_speed(time_to_pass: float, prm: GuidanceParams) -> float:
-    """Velocidad de aproximacion: baja linealmente a terminal_speed al acercarse el paso."""
+def approach_speed(time_to_pass: float, target_speed: float, prm: GuidanceParams) -> float:
+    """
+    Velocidad de aproximacion: baja hacia terminal_speed al acercarse el paso.
+
+    target_speed es el modulo de la velocidad ESTIMADA del checkpoint; el frenado no baja
+    de terminal_speed_margin veces esa velocidad, ni de la velocidad de crucero si el
+    checkpoint resultara ser mas rapido que ella.
+    """
     if not math.isfinite(time_to_pass) or time_to_pass >= prm.slowdown_time:
         return prm.speed
+    floor = min(max(prm.terminal_speed, prm.terminal_speed_margin * target_speed), prm.speed)
     f = max(time_to_pass, 0.0) / prm.slowdown_time
-    return prm.terminal_speed + f * (prm.speed - prm.terminal_speed)
+    return floor + f * (prm.speed - floor)
 
 
 def excitation_gain(size_rel_sigma: float, t_go: float, prm: GuidanceParams) -> float:
@@ -137,7 +148,8 @@ def guidance_velocity(
         final; por defecto, el t_go del punto de encuentro (que depende de la escala).
     :return: (velocidad de mando, t_go, fraccion de excitacion aplicada).
     """
-    speed = approach_speed(time_to_pass if time_to_pass is not None else math.inf, prm)
+    speed = approach_speed(time_to_pass if time_to_pass is not None else math.inf,
+                           float(np.linalg.norm(v_t)), prm)
     t_go = intercept_time(r, v_t, speed)
     if t_go is None:
         t_go = float(np.linalg.norm(r)) / speed       # persecucion pura como respaldo

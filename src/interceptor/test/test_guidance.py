@@ -139,16 +139,33 @@ def test_should_freeze_needs_close_checkpoint():
 def test_approach_speed_slows_down_near_the_pass():
     """Lejos va a speed; al llegar el paso, a terminal_speed; en medio, intermedio."""
     prm = GuidanceParams()
-    assert approach_speed(math.inf, prm) == prm.speed
-    assert approach_speed(prm.slowdown_time + 1.0, prm) == prm.speed
-    assert approach_speed(0.0, prm) == pytest.approx(prm.terminal_speed)
-    medio = approach_speed(prm.slowdown_time / 2, prm)
+    assert approach_speed(math.inf, 0.0, prm) == prm.speed
+    assert approach_speed(prm.slowdown_time + 1.0, 0.0, prm) == prm.speed
+    assert approach_speed(0.0, 0.0, prm) == pytest.approx(prm.terminal_speed)
+    medio = approach_speed(prm.slowdown_time / 2, 0.0, prm)
     assert prm.terminal_speed < medio < prm.speed
 
 
 def test_guidance_velocity_uses_the_slower_speed_at_the_end():
-    """Con el paso inminente, el modulo de la orden es el de terminal_speed."""
+    """Con el paso inminente frena: a terminal_speed si el checkpoint esta quieto."""
     prm = GuidanceParams()
-    r, v = np.array([3.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])
-    v_cmd, _, _ = guidance_velocity(r, v, 0.0, 0.0, prm, time_to_pass=0.0)
+    r = np.array([3.0, 0.0, 0.0])
+    v_cmd, _, _ = guidance_velocity(r, np.zeros(3), 0.0, 0.0, prm, time_to_pass=0.0)
     assert np.linalg.norm(v_cmd) == pytest.approx(prm.terminal_speed)
+    # Con el checkpoint estimado en movimiento, guarda el margen sobre su velocidad.
+    v_cmd, _, _ = guidance_velocity(r, np.array([0.0, 1.0, 0.0]), 0.0, 0.0, prm, time_to_pass=0.0)
+    assert np.linalg.norm(v_cmd) == pytest.approx(prm.terminal_speed_margin * 1.0)
+
+
+def test_approach_speed_keeps_margin_over_the_estimated_target_speed():
+    """
+    No frena por debajo del margen sobre la velocidad ESTIMADA del checkpoint.
+
+    Con poco margen la geometria de intercepcion se vuelve muy sensible, y la velocidad
+    real del checkpoint no se conoce en vuelo: solo se usa la que estima el filtro.
+    """
+    prm = GuidanceParams()
+    rapido = 1.4                      # estimacion de a bordo, no verdad del simulador
+    assert approach_speed(0.0, rapido, prm) == pytest.approx(prm.terminal_speed_margin * rapido)
+    # Nunca por encima de la velocidad de crucero, aunque el checkpoint parezca muy rapido.
+    assert approach_speed(0.0, 100.0, prm) == pytest.approx(prm.speed)

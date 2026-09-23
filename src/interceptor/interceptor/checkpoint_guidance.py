@@ -64,7 +64,7 @@ class CheckpointGuidance(Px4OffboardNode):
         )
         self._pass_radius = self.declare_parameter('pass_radius_m', 5.0).value
         self._coast_time = self.declare_parameter('coast_s', 2.0).value
-        self._freeze_time = self.declare_parameter('freeze_time_s', 0.3).value
+        self._freeze_time = self.declare_parameter('freeze_time_s', 0.2).value
         self._estimate_timeout = self.declare_parameter('estimate_timeout_s', 0.5).value
         self._max_duration = self.declare_parameter('max_duration_s', 60.0).value
         self._min_altitude = self.declare_parameter('min_altitude_m', 3.0).value

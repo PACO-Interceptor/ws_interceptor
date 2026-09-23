@@ -83,7 +83,13 @@ def generate_launch_description():
             'speed_mps', default_value='3.0',
             description='Velocidad del interceptor en mode:=guidance [m/s].'),
         DeclareLaunchArgument(
-            'freeze_time_s', default_value='0.5',
+            'terminal_speed_mps', default_value='1.2',
+            description='Velocidad en la aproximacion final en mode:=guidance [m/s].'),
+        DeclareLaunchArgument(
+            'slowdown_time_s', default_value='3.0',
+            description='Segundos antes del paso en que empieza a frenar.'),
+        DeclareLaunchArgument(
+            'freeze_time_s', default_value='0.2',
             description='En mode:=guidance, segundos antes del paso en que congela el rumbo.'),
         DeclareLaunchArgument(
             'excitation_amp_mps', default_value='2.0',
@@ -100,6 +106,10 @@ def generate_launch_description():
             description=(
                 'Amplitud de la oscilacion de velocidad en surge y weave [m/s]. Con 1.0 la '
                 'escala converge con un +12 % de sesgo; con 2.5, a +-5 %.')),
+        DeclareLaunchArgument(
+            'target_speed_mps', default_value='1.0',
+            description='Velocidad del objetivo en su recta [m/s] (solo el banco de pruebas: '
+                        'el guiado no conoce este valor).'),
         DeclareLaunchArgument(
             'true_size', default_value='1.0',
             description='Diametro real de la pelota [m], solo para el evaluador '
@@ -200,7 +210,7 @@ def generate_launch_description():
             'center_north_m': 0.0,
             'center_east_m': -15.0,
             'line_heading_deg': 90.0,
-            'line_speed_mps': 1.0,
+            'line_speed_mps': float_arg('target_speed_mps'),
             'line_length_m': 30.0,
             'line_start_delay_s': 10.0,
         }],
@@ -228,6 +238,8 @@ def generate_launch_description():
             'speed_mps': float_arg('speed_mps'),
             'excitation_amp_mps': float_arg('excitation_amp_mps'),
             'freeze_time_s': float_arg('freeze_time_s'),
+            'terminal_speed_mps': float_arg('terminal_speed_mps'),
+            'slowdown_time_s': float_arg('slowdown_time_s'),
             'start_delay_s': 10.0,
             'start_north_m': 0.0,
             'start_east_m': 0.0,

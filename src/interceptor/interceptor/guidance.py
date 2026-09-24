@@ -60,9 +60,15 @@ class GuidanceParams:
     terminal_speed: float = 1.2
     terminal_speed_margin: float = 1.8
     slowdown_time: float = 3.0
-    # Amplitud y frecuencia de la oscilacion lateral de excitacion [m/s], [Hz].
+    # Amplitud y frecuencia de la oscilacion de excitacion [m/s], [Hz].
     excitation_amp: float = 2.0
     excitation_freq: float = 0.25
+    # Direccion de la excitacion al observar: 'lateral' (perpendicular al rumbo) o 'radial'
+    # (acelerar y frenar a lo largo de la linea de vision). Con bearing + angulo la escala es
+    # observable con cualquier aceleracion, tambien la radial (Ning et al., IJRR 2024,
+    # apartado 5.4), y la radial no desvia el punto de mira. En Gazebo el sesgo del tamano
+    # nace de errores laterales del bearing (reproduccion con el bearing real: +18 % -> +6 %).
+    excitation_mode: str = 'lateral'
     # Incertidumbre relativa del tamano (sigma/tamano) con excitacion plena y nula.
     sigma_rel_start: float = 0.15
     sigma_rel_done: float = 0.05
@@ -373,6 +379,19 @@ def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.n
     t_contact = time_to_contact(r, v_rel)
     gate.update(size_rel_sigma, t_contact, dt)
     if not gate.committed:
+        if prm.excitation_mode == 'radial':
+            # La retencion va antes de sumar la oscilacion: si no, recortaria su mitad de
+            # acercamiento y la excitacion dejaria de ser simetrica.
+            v_cmd, _, _ = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_contact,
+                                            excite=False)
+            v_cmd = hold_off(v_cmd, r, v_t, v_own, angular_range, prm, size_rel_sigma)
+            gain = excitation_gain(size_rel_sigma, t_contact, prm)
+            dist = float(np.linalg.norm(r))
+            if gain > 0.0 and dist > 1e-6:
+                osc = math.sin(2.0 * math.pi * prm.excitation_freq * tau)
+                v_cmd = v_cmd + gain * prm.excitation_amp * osc * r / dist
+                v_cmd[2] = min(max(v_cmd[2], -prm.max_vertical_speed), prm.max_vertical_speed)
+            return v_cmd, t_contact, gain
         v_cmd, _, gain = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_contact)
         return (hold_off(v_cmd, r, v_t, v_own, angular_range, prm, size_rel_sigma),
                 t_contact, gain)

@@ -67,6 +67,8 @@ class CheckpointGuidance(Px4OffboardNode):
                 'excitation_amp_mps', defaults.excitation_amp).value,
             excitation_freq=self.declare_parameter(
                 'excitation_freq_hz', defaults.excitation_freq).value,
+            excitation_mode=self.declare_parameter(
+                'excitation_mode', defaults.excitation_mode).value,
             terminal_time=self.declare_parameter(
                 'terminal_time_s', defaults.terminal_time).value,
             terminal_speed=self.declare_parameter(

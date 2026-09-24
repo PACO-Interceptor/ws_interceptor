@@ -344,6 +344,20 @@ def fly_gated(seed, v_t, p_t, size=0.3, prior=1.0, rate=11.0, duration=40.0):
     return min_dist, gate
 
 
+def test_radial_excitation_moves_along_the_line_of_sight():
+    """En modo radial la oscilacion va a lo largo de la linea de vision, no de lado."""
+    prm = GuidanceParams(excitation_mode='radial')
+    r, v_t = np.array([20.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])
+    tau = 1.0 / (4.0 * prm.excitation_freq)                    # maximo de la oscilacion
+    with_exc, _, gain = gated_velocity(CommitGate(prm), r, v_t, np.zeros(3), 0.7, 100.0, tau,
+                                       0.1, prm)
+    base, _, _ = gated_velocity(CommitGate(prm), r, v_t, np.zeros(3), 0.7, 100.0, 0.0, 0.1, prm)
+    assert gain == 1.0
+    delta = with_exc - base
+    assert delta[0] == pytest.approx(prm.excitation_amp)
+    assert abs(delta[1]) < 1e-9
+
+
 @pytest.mark.parametrize('v_t, p_t', [
     ((0.0, 2.0, 0.0), (20.0, -15.0, -12.5)),     # cruza a 2 m/s, como en Gazebo
     ((0.0, 1.0, 0.0), (20.0, -15.0, -12.5)),     # cruza a 1 m/s

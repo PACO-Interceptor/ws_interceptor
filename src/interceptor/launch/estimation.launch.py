@@ -138,6 +138,10 @@ def generate_launch_description():
             description=(
                 'CSV de la evaluacion (vacio = ~/.ros/interceptor_estimation/<fecha>.csv).')),
         DeclareLaunchArgument(
+            'start_altitude_m', default_value='10.0',
+            description='Altura de espera y de vuelo del interceptor en modo guidance [m]: donde '
+                        'lo habria dejado el piloto (a la altura del checkpoint).'),
+        DeclareLaunchArgument(
             'start_north_m', default_value='0.0',
             description='Punto de espera del interceptor al norte de su origen [m] (modo '
                         'guidance): donde lo habria dejado el piloto.'),
@@ -148,6 +152,10 @@ def generate_launch_description():
             'start_yaw_deg', default_value='0.0',
             description='Rumbo de la camara mientras espera y aun no ve el checkpoint '
                         '[grados, 0 = norte, positivo al este].'),
+        DeclareLaunchArgument(
+            'excitation_mode', default_value='lateral',
+            description='Excitacion al observar: lateral (perpendicular al rumbo) o radial '
+                        '(acelerar y frenar a lo largo de la linea de vision).'),
         DeclareLaunchArgument(
             'start_when_seen', default_value='false',
             description='true: la fase activa empieza cuando la camara ya ve el checkpoint de '
@@ -254,9 +262,10 @@ def generate_launch_description():
     checkpoint_guidance = Node(
         package='interceptor', executable='checkpoint_guidance',
         parameters=[{
-            'altitude_m': 10.0,
+            'altitude_m': float_arg('start_altitude_m'),
             'speed_mps': float_arg('speed_mps'),
             'excitation_amp_mps': float_arg('excitation_amp_mps'),
+            'excitation_mode': LaunchConfiguration('excitation_mode'),
             'freeze_time_s': float_arg('freeze_time_s'),
             'terminal_speed_mps': float_arg('terminal_speed_mps'),
             'slowdown_time_s': float_arg('slowdown_time_s'),

@@ -62,7 +62,12 @@ class FilterParams:
     """Parametros del filtro. Unidades SI; angulos en radianes."""
 
     # Ruido de proceso: densidad espectral de la aceleracion del objetivo [m/s^2/sqrt(Hz)].
-    sigma_accel: float = 0.3
+    # Especificacion del usuario (24/09): el checkpoint lo lleva un dron con aceleraciones
+    # bajas y variables, como mucho 0.25 g (~2.45 m/s^2). Regla de Bar-Shalom para el modelo
+    # de ruido de aceleracion: desviacion por paso entre 0.5 y 1 veces la aceleracion maxima;
+    # con el extremo bajo y un paso de ~0.1 s (YOLO a ~10 Hz): 0.5 * 2.45 * sqrt(0.1) = 0.39.
+    # Con 0.5 g la escala dejaba de ser observable (el dron no acelera mas que el checkpoint).
+    sigma_accel: float = 0.39
     # Deriva relativa del tamano [1/sqrt(s)]; pequena, solo para errores de modelo.
     sigma_log_size_rate: float = 1e-3
     # Ruido del bearing [rad]. No es solo el jitter de la caja (~0.3 grados): incluye el

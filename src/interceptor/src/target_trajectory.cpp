@@ -55,8 +55,19 @@ public:
     line_speed_mps_ = this->declare_parameter<double>("line_speed_mps", 1.0);
     line_length_m_ = this->declare_parameter<double>("line_length_m", 30.0);
     line_start_delay_s_ = this->declare_parameter<double>("line_start_delay_s", 5.0);
-    if (trajectory_type_ != "circle" && trajectory_type_ != "line") {
-      throw std::invalid_argument("trajectory_type debe ser \"circle\" o \"line\"");
+    // Perfil "maneuver": como "line" (mismo inicio, espera y longitud recorrida), pero la
+    // velocidad oscila +-maneuver_speed_amp (relativa) con periodo maneuver_speed_period_s y
+    // el rumbo +-maneuver_turn_deg con periodo maneuver_turn_period_s. Sirve para probar el
+    // checkpoint con aceleraciones y cambios de direccion, que el filtro no modela.
+    maneuver_speed_amp_ = this->declare_parameter<double>("maneuver_speed_amp", 0.5);
+    maneuver_speed_period_s_ = this->declare_parameter<double>("maneuver_speed_period_s", 8.0);
+    maneuver_turn_deg_ = this->declare_parameter<double>("maneuver_turn_deg", 45.0);
+    maneuver_turn_period_s_ = this->declare_parameter<double>("maneuver_turn_period_s", 10.0);
+    if (trajectory_type_ != "circle" && trajectory_type_ != "line" &&
+      trajectory_type_ != "maneuver")
+    {
+      throw std::invalid_argument(
+              "trajectory_type debe ser \"circle\", \"line\" o \"maneuver\"");
     }
 
     std::string ns = px4_namespace_;
@@ -91,9 +102,9 @@ public:
           // estaba en el aire en otro sitio, la recta no empieza hasta llegar.
           const double dn = msg->position[0] - center_north_m_;
           const double de = msg->position[1] - center_east_m_;
-          const bool at_start = trajectory_type_ != "line" || std::hypot(dn, de) < 1.0;
+          const bool at_start = trajectory_type_ == "circle" || std::hypot(dn, de) < 1.0;
           if (at_start && std::fabs(msg->position[2] - static_cast<float>(-altitude_m_)) < 1.0f) {
-            phase_ = (trajectory_type_ == "line") ? Phase::LINE : Phase::CIRCLE;
+            phase_ = (trajectory_type_ == "circle") ? Phase::CIRCLE : Phase::LINE;
             t0_ = this->get_clock()->now();
             RCLCPP_INFO(
               this->get_logger(),
@@ -208,6 +219,8 @@ private:
       msg.position[1] = static_cast<float>(low ? takeoff_east_m_ : center_east_m_);
       msg.position[2] = static_cast<float>(-altitude_m_);
       msg.yaw = 0.0f;
+    } else if (phase_ == Phase::LINE && trajectory_type_ == "maneuver") {
+      publish_maneuver_setpoint(msg);
     } else if (phase_ == Phase::LINE) {
       // Espera line_start_delay_s en el inicio y luego avanza a velocidad constante hasta
       // recorrer line_length_m. La velocidad va tambien como feedforward para que PX4
@@ -240,6 +253,34 @@ private:
     trajectory_setpoint_pub_->publish(msg);
   }
 
+  // Integra el perfil "maneuver" desde la ultima llamada y rellena posicion, velocidad y yaw.
+  void publish_maneuver_setpoint(px4_msgs::msg::TrajectorySetpoint & msg)
+  {
+    const double t = (this->get_clock()->now() - t0_).seconds() - line_start_delay_s_;
+    const double base_heading = line_heading_deg_ * M_PI / 180.0;
+    double speed = 0.0;
+    double heading = base_heading;
+    if (t > 0.0 && maneuver_travelled_m_ < line_length_m_) {
+      const double two_pi = 2.0 * M_PI;
+      speed = line_speed_mps_ *
+        (1.0 + maneuver_speed_amp_ * std::sin(two_pi * t / maneuver_speed_period_s_));
+      heading = base_heading + maneuver_turn_deg_ * M_PI / 180.0 *
+        std::sin(two_pi * t / maneuver_turn_period_s_);
+      const double dt = maneuver_last_t_ < 0.0 ? 0.0 : std::max(t - maneuver_last_t_, 0.0);
+      maneuver_north_m_ += speed * std::cos(heading) * dt;
+      maneuver_east_m_ += speed * std::sin(heading) * dt;
+      maneuver_travelled_m_ += speed * dt;
+      maneuver_last_t_ = t;
+    }
+    msg.position[0] = static_cast<float>(center_north_m_ + maneuver_north_m_);
+    msg.position[1] = static_cast<float>(center_east_m_ + maneuver_east_m_);
+    msg.position[2] = static_cast<float>(-altitude_m_);
+    msg.velocity[0] = static_cast<float>(speed * std::cos(heading));
+    msg.velocity[1] = static_cast<float>(speed * std::sin(heading));
+    msg.velocity[2] = 0.0f;
+    msg.yaw = static_cast<float>(std::atan2(std::sin(heading), std::cos(heading)));
+  }
+
   void publish_vehicle_command(
     uint16_t command, float param1 = 0.0f, float param2 = 0.0f)
   {
@@ -268,6 +309,14 @@ private:
   double line_speed_mps_;
   double line_length_m_;
   double line_start_delay_s_;
+  double maneuver_speed_amp_;
+  double maneuver_speed_period_s_;
+  double maneuver_turn_deg_;
+  double maneuver_turn_period_s_;
+  double maneuver_north_m_{0.0};
+  double maneuver_east_m_{0.0};
+  double maneuver_travelled_m_{0.0};
+  double maneuver_last_t_{-1.0};
 
   uint64_t tick_count_{0};
   Phase phase_{Phase::CLIMB};

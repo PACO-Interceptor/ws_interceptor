@@ -138,6 +138,10 @@ def generate_launch_description():
             description=(
                 'CSV de la evaluacion (vacio = ~/.ros/interceptor_estimation/<fecha>.csv).')),
         DeclareLaunchArgument(
+            'target_profile', default_value='line',
+            description='Perfil del objetivo (solo banco): line (velocidad constante) o maneuver '
+                        '(velocidad y rumbo oscilando).'),
+        DeclareLaunchArgument(
             'start_altitude_m', default_value='10.0',
             description='Altura de espera y de vuelo del interceptor en modo guidance [m]: donde '
                         'lo habria dejado el piloto (a la altura del checkpoint).'),
@@ -233,7 +237,7 @@ def generate_launch_description():
     target_trajectory = Node(
         package='interceptor', executable='target_trajectory',
         parameters=[{
-            'trajectory_type': 'line',
+            'trajectory_type': LaunchConfiguration('target_profile'),
             'altitude_m': 10.0,
             'center_north_m': 0.0,
             'center_east_m': -15.0,

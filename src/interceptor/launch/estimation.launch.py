@@ -165,6 +165,10 @@ def generate_launch_description():
             description='Excitacion al observar: lateral (perpendicular al rumbo) o radial '
                         '(acelerar y frenar a lo largo de la linea de vision).'),
         DeclareLaunchArgument(
+            'terminal_guidance', default_value='collision',
+            description='Ley del ataque: pn (navegacion proporcional sobre la linea de vision '
+                        'medida) o collision (rumbo de colision con la estimacion).'),
+        DeclareLaunchArgument(
             'start_when_seen', default_value='false',
             description='true: la fase activa empieza cuando la camara ya ve el checkpoint de '
                         'cerca (traspaso desde el piloto); false: por tiempo.'),
@@ -275,6 +279,7 @@ def generate_launch_description():
             'speed_mps': float_arg('speed_mps'),
             'excitation_amp_mps': float_arg('excitation_amp_mps'),
             'excitation_mode': LaunchConfiguration('excitation_mode'),
+            'terminal_guidance': LaunchConfiguration('terminal_guidance'),
             'freeze_time_s': float_arg('freeze_time_s'),
             'terminal_speed_mps': float_arg('terminal_speed_mps'),
             'slowdown_time_s': float_arg('slowdown_time_s'),

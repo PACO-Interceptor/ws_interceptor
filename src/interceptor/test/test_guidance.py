@@ -9,6 +9,7 @@ from interceptor.guidance import excitation_gain
 from interceptor.guidance import gated_velocity, GuidanceParams, hold_off
 from interceptor.guidance import guidance_velocity, level_velocity
 from interceptor.guidance import intercept_time, should_freeze, time_to_closest_approach
+from interceptor.guidance import LosRateEstimator, pn_acceleration, ProportionalNavigation
 from interceptor.guidance import time_to_contact
 import numpy as np
 import pytest
@@ -512,3 +513,61 @@ def test_closed_loop_commits_only_with_the_scale_known(v_t, p_t):
         assert gate.committed and not gate.forced
         assert gate.commit_sigma < prm.sigma_rel_commit
         assert min_dist < 0.15
+
+
+def _rotz(a, v):
+    c, s = math.cos(a), math.sin(a)
+    return np.array([c * v[0] - s * v[1], s * v[0] + c * v[1], v[2]])
+
+
+def _los_rate(bias):
+    """Velocidad angular medida con la linea de vision girando a 0.2 rad/s y un sesgo de yaw."""
+    est = LosRateEstimator(0.3)
+    for k in range(4):
+        t = 0.1 * k
+        est.add(t, _rotz(bias, np.array([math.cos(0.2 * t), math.sin(0.2 * t), 0.0])))
+    return est.rate(0.3)
+
+
+def test_los_rate_is_the_same_with_a_constant_yaw_bias():
+    """Un sesgo de rumbo constante gira la direccion pero no la velocidad de giro."""
+    _, omega = _los_rate(0.0)
+    assert omega == pytest.approx([0.0, 0.0, 0.2], abs=1e-3)
+    los_b, omega_b = _los_rate(math.radians(5.0))
+    assert omega_b == pytest.approx(omega, abs=1e-3)
+    assert los_b == pytest.approx(_rotz(math.radians(5.0), [math.cos(0.06), math.sin(0.06), 0]),
+                                  abs=1e-3)
+
+
+def test_los_rate_needs_recent_detections():
+    """Sin 3 detecciones o con la ultima demasiado vieja, no hay medida."""
+    est = LosRateEstimator(0.3)
+    est.add(0.0, np.array([1.0, 0.0, 0.0]))
+    est.add(0.1, np.array([1.0, 0.0, 0.0]))
+    assert est.rate(0.1) is None
+    est.add(0.2, np.array([1.0, 0.0, 0.0]))
+    assert est.rate(0.2) is not None
+    assert est.rate(0.6) is None
+
+
+def test_pn_acceleration_turns_toward_the_moving_checkpoint():
+    """Linea de vision al norte girando hacia el este: acelera al este, hasta max_accel."""
+    prm = GuidanceParams()
+    los, omega = np.array([1.0, 0.0, 0.0]), np.array([0.0, 0.0, 0.1])
+    a = pn_acceleration(los, omega, 4.0, prm)
+    assert a == pytest.approx([0.0, prm.pn_gain * 4.0 * 0.1, 0.0])
+    assert np.linalg.norm(pn_acceleration(los, 10 * omega, 4.0, prm)) == pytest.approx(
+        prm.max_accel)
+    assert pn_acceleration(los, np.zeros(3), 4.0, prm) == pytest.approx(np.zeros(3))
+
+
+def test_proportional_navigation_starts_on_the_collision_course_and_keeps_the_speed():
+    """Primera orden = rumbo de colision; despues la gira la PN con el modulo del guiado."""
+    prm = GuidanceParams()
+    pn = ProportionalNavigation(prm)
+    v0 = np.array([3.0, 0.0, 0.0])
+    assert pn.update(v0, None, 4.0, 0.0) == pytest.approx(v0)
+    measured = (np.array([1.0, 0.0, 0.0]), np.array([0.0, 0.0, 0.1]))
+    v = pn.update(np.array([2.0, 0.0, 0.0]), measured, 4.0, 0.05)
+    assert np.linalg.norm(v) == pytest.approx(2.0)
+    assert v[1] > 0.0

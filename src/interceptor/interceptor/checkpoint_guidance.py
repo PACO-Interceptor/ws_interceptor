@@ -16,6 +16,12 @@ PX4. Fases (ver px4_offboard): CLIMB, SETTLE, PURSUE, HOLD. Dentro de PURSUE:
   relativa (time_to_closest_approach), que no depende del tamano estimado. El t_go del
   punto de encuentro si depende: con el tamano a la mitad llego a congelar el rumbo 1 s
   antes de tiempo en Gazebo.
+- Opcion (terminal_guidance 'pn', por defecto no): al atacar, la direccion la gira la
+  navegacion proporcional sobre la velocidad de giro de la linea de vision medida en las
+  detecciones (ver interceptor.guidance.ProportionalNavigation): la estimacion del filtro
+  sale girada alrededor del dron cuando el yaw de PX4 esta sesgado, y la velocidad de giro
+  medida no.
+  Parte de la orden del rumbo de colision que habia al comprometerse.
 - Frena en la aproximacion final (interceptor.guidance.approach_speed): a 3 m/s el
   tramo a ciegas del final mide metro y medio, demasiado para un checkpoint pequeno.
 - En el ultimo freeze_time_s antes del paso congela el rumbo: de muy cerca la direccion
@@ -34,14 +40,18 @@ de 20 Hz), y con el checkpoint en movimiento eso es error lateral directo.
 
 import math
 
-from interceptor.guidance import CommitGate, gated_velocity, GuidanceParams, should_freeze
+from interceptor.bearing import rotate_by_quaternion
+from interceptor.guidance import closing_speed, CommitGate, gated_velocity, GuidanceParams
+from interceptor.guidance import LosRateEstimator, ProportionalNavigation, should_freeze
 from interceptor.px4_offboard import NAN, Px4OffboardNode
-from interceptor_msgs.msg import TargetEstimate
+from interceptor_msgs.msg import TargetEstimate, TargetSighting
 import numpy as np
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from rclpy.time import Time
 from std_msgs.msg import Bool
+from tf2_ros import Buffer, TransformException, TransformListener
 
 # QoS de interceptor/guidance_committed: el ultimo valor le llega tambien a quien se
 # suscriba tarde (el evaluador).
@@ -79,6 +89,11 @@ class CheckpointGuidance(Px4OffboardNode):
                 'sigma_rel_commit', defaults.sigma_rel_commit).value,
             observe_speed=self.declare_parameter(
                 'observe_speed_mps', defaults.observe_speed).value,
+            terminal_guidance=self.declare_parameter(
+                'terminal_guidance', defaults.terminal_guidance).value,
+            pn_gain=self.declare_parameter('pn_gain', defaults.pn_gain).value,
+            los_rate_window=self.declare_parameter(
+                'los_rate_window_s', defaults.los_rate_window).value,
         )
         # Traspaso desde el piloto: la fase activa empieza con el checkpoint ya visto a
         # menos de observe_max_angular_range tamanos, donde el detector es fiable.
@@ -92,6 +107,9 @@ class CheckpointGuidance(Px4OffboardNode):
         self._min_altitude = self.declare_parameter('min_altitude_m', 3.0).value
         # Retraso entre la captura de la imagen y la llegada de la estimacion [s].
         self._estimate_latency = self.declare_parameter('estimate_latency_s', 0.06).value
+        # Confianza minima de una deteccion para medir la linea de vision (la misma que usa
+        # target_estimator).
+        self._min_confidence = self.declare_parameter('min_confidence', 0.3).value
 
         self._estimate = None
         self._estimate_time = -math.inf
@@ -107,6 +125,17 @@ class CheckpointGuidance(Px4OffboardNode):
         self._last_log = -math.inf
         self._gate = CommitGate(self._prm)
         self._gate_elapsed = 0.0
+        # Linea de vision medida para la navegacion proporcional. Las detecciones llevan
+        # tiempo de simulacion y este nodo va con el del sistema: _los_offset los relaciona.
+        self._los = LosRateEstimator(self._prm.los_rate_window)
+        self._los_offset = None
+        self._pn = ProportionalNavigation(self._prm)
+        self._pn_elapsed = None
+        self._los_rate = math.nan      # ultima velocidad de giro medida [rad/s], para el log
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self)
+        self.create_subscription(
+            TargetSighting, 'interceptor/target_sighting', self._los_callback, 10)
         self.create_subscription(
             TargetEstimate, 'interceptor/target_estimate', self._estimate_callback, 10)
         # Si ya se ha comprometido con el paso final: el evaluador distingue asi el primer
@@ -127,6 +156,22 @@ class CheckpointGuidance(Px4OffboardNode):
         self._estimate = msg
         self._estimate_time = self.now()
 
+    def _los_callback(self, msg: TargetSighting) -> None:
+        """Guarda la direccion al checkpoint en el mundo (NED) con la actitud de PX4."""
+        if msg.confidence < self._min_confidence:
+            return
+        stamp = Time.from_msg(msg.header.stamp)
+        try:
+            tf = self._tf_buffer.lookup_transform('map', msg.header.frame_id, stamp)
+        except TransformException:
+            return
+        q = tf.transform.rotation
+        g = rotate_by_quaternion(q.x, q.y, q.z, q.w, (msg.bearing.x, msg.bearing.y,
+                                                      msg.bearing.z))
+        t = stamp.nanoseconds * 1e-9
+        self._los_offset = t - self.now()
+        self._los.add(t, enu_to_ned(*g))
+
     def on_active_start(self) -> None:
         """Olvida la estimacion previa al reinicio del estimador."""
         if self._last_reset_count is not None:
@@ -137,6 +182,9 @@ class CheckpointGuidance(Px4OffboardNode):
         self._coast_until = None
         self._gate = CommitGate(self._prm)
         self._gate_elapsed = 0.0
+        self._los.reset()
+        self._pn.reset()
+        self._pn_elapsed = None
         self._committed_pub.publish(Bool(data=False))
 
     def active_setpoint(self, elapsed: float):
@@ -193,6 +241,8 @@ class CheckpointGuidance(Px4OffboardNode):
             self._last_t_go = t_go
             self._start_coast(now, 'rumbo congelado en el tramo final')
             return [NAN] * 3, self._limit_altitude(self._last_cmd)
+        if self._prm.terminal_guidance == 'pn':
+            v_cmd = self._pn_velocity(v_cmd, r, v_t, now, elapsed)
         self._last_cmd, self._last_t_go = v_cmd, t_go
 
         if float(r @ v_cmd) < 0.0 and float(np.linalg.norm(r)) < self._pass_radius:
@@ -200,6 +250,17 @@ class CheckpointGuidance(Px4OffboardNode):
         else:
             self._log_status(now, 'ataca', t_go, r, e.size, rel_sigma, gain)
         return [NAN] * 3, self._limit_altitude(v_cmd)
+
+    def _pn_velocity(self, v_collision, r, v_t, now: float, elapsed: float) -> np.ndarray:
+        """Orden del ataque por navegacion proporcional (ver ProportionalNavigation)."""
+        dt = 0.0 if self._pn_elapsed is None else elapsed - self._pn_elapsed
+        self._pn_elapsed = elapsed
+        measured = None
+        if self._los_offset is not None:
+            measured = self._los.rate(now + self._los_offset)
+        v_close = closing_speed(r, v_t - np.array(self.velocity))
+        self._los_rate = math.nan if measured is None else float(np.linalg.norm(measured[1]))
+        return self._pn.update(v_collision, measured, v_close, dt)
 
     @staticmethod
     def _position_velocity_covariance(e) -> np.ndarray:
@@ -214,10 +275,13 @@ class CheckpointGuidance(Px4OffboardNode):
         if now - self._last_log < 1.0:
             return
         self._last_log = now
+        pn = ''
+        if mode == 'ataca' and self._prm.terminal_guidance == 'pn':
+            pn = f'  giro LdV {1000 * self._los_rate:4.0f} mrad/s'
         self.get_logger().info(
             f'{mode} t_go {t_go:4.1f} s  dist {np.linalg.norm(r):5.1f} m  '
             f'tamano {size:4.2f} m (sigma {100 * rel_sigma:3.0f} %)  '
-            f'excitacion {100 * gain:3.0f} %')
+            f'excitacion {100 * gain:3.0f} %{pn}')
 
     def _still_ahead(self) -> bool:
         """Indica si la estimacion pone el checkpoint delante de la ultima orden."""
@@ -230,6 +294,10 @@ class CheckpointGuidance(Px4OffboardNode):
         remaining = self._last_t_go if math.isfinite(self._last_t_go) else 0.0
         self._coast_start = now
         self._coast_resumable = resumable
+        # Si lo vuelve a ver y retoma el guiado, la navegacion proporcional parte otra vez
+        # del rumbo de colision.
+        self._pn.reset()
+        self._pn_elapsed = None
         self._coast_until = now + max(remaining, 0.0) + self._coast_time
         self.get_logger().info(
             f'Paso final ({reason}): recto {self._coast_until - now:.1f} s y parada.')

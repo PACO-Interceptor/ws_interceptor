@@ -28,10 +28,17 @@ ATACA con el guiado de siempre. Si no puede esperar (el checkpoint se le echa en
 mas rapido de lo que puede apartarse, o la sigma no baja en max_observe_time), se
 compromete igualmente y lo dice (CommitGate).
 
+Opcion (terminal_guidance 'pn'): al atacar, la direccion la gira la navegacion
+proporcional (ProportionalNavigation) sobre la velocidad de giro de la linea de vision
+medida en las detecciones (LosRateEstimator), inmune a un sesgo de rumbo constante de
+PX4. La estimacion sigue dando la direccion inicial, la velocidad (frenado) y el tiempo
+hasta el paso.
+
 Todo en NED (el frame de PX4), metros y segundos. Sin ROS: el nodo esta en
 checkpoint_guidance.py.
 """
 
+from collections import deque
 from dataclasses import dataclass
 import math
 from typing import Optional, Tuple
@@ -115,6 +122,22 @@ class GuidanceParams:
     # pasa mas de la mitad del tiempo sin ver nada (vuelos de Gazebo, cualquier pelota),
     # y observar desde ahi es solo perder detecciones y reiniciar el filtro.
     observe_max_angular_range: float = 25.0
+    # Ley del ataque: 'collision' = rumbo de colision con la estimacion del filtro;
+    # 'pn' = navegacion proporcional sobre la velocidad de giro de la linea de vision
+    # MEDIDA en las detecciones (opcion, sin validar en Gazebo). Motivo de 'pn': el filtro
+    # pasa cada bearing al mundo con el yaw de PX4, que en Gazebo se desvia ~5 grados en los
+    # ataques fallidos, y un sesgo de rumbo constante no cambia la velocidad de giro de la
+    # linea de vision (desaparece al derivar). En el lazo sintetico con sesgo de yaw no
+    # mejora al rumbo de colision (que ahi apenas nota el sesgo) y en Gazebo, repitiendo
+    # el filtro con la actitud real, el sesgo explica solo parte del error lateral.
+    terminal_guidance: str = 'collision'
+    # Constante de navegacion: 3, el valor clasico (entre 3 y 5 en la literatura); con 2
+    # el mando se dispara al final y por encima de 5 amplifica el ruido.
+    pn_gain: float = 3.0
+    # Tramo de detecciones [s] del que se saca la velocidad de giro de la linea de vision
+    # (ajuste lineal): ~3 detecciones a 10 Hz. Manda el retraso, no el ruido: en el lazo
+    # sintetico, 0.3 s acierta 54/60 sin sesgo, 0.5 s 46/60 y 1 s 19/60.
+    los_rate_window: float = 0.3
 
     @property
     def reverse_time(self) -> float:
@@ -550,3 +573,116 @@ def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.n
     v_cmd, _, gain = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_pass,
                                        excite=False, slow_attack=not gate.forced)
     return v_cmd, t_pass, gain
+
+
+class LosRateEstimator:
+    """
+    Velocidad angular de la linea de vision medida en las detecciones (NED, rad/s).
+
+    Cada deteccion da la direccion camara->checkpoint en el mundo (bearing girado con la
+    actitud de PX4). Se ajusta una recta a cada componente en los ultimos
+    los_rate_window segundos y la velocidad angular es lambda x dlambda/dt. No usa el
+    filtro ni la escala. Un error de rumbo constante gira lambda y su derivada por igual:
+    el modulo de la velocidad angular y su anulacion (rumbo de colision) no cambian.
+    """
+
+    def __init__(self, window: float) -> None:
+        """Guarda el tramo [s] del ajuste."""
+        self._window = window
+        self._samples = deque()
+
+    def reset(self) -> None:
+        """Olvida las detecciones."""
+        self._samples.clear()
+
+    def add(self, t: float, los: np.ndarray) -> None:
+        """Anade la direccion unitaria (NED) medida en el instante t [s] de la imagen."""
+        if self._samples and t <= self._samples[-1][0]:
+            return          # desordenada o repetida
+        self._samples.append((t, np.asarray(los, dtype=float)))
+        while self._samples[0][0] < t - self._window:
+            self._samples.popleft()
+
+    def rate(self, now: float) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        """
+        (direccion, velocidad angular) al final del tramo, o None.
+
+        None si hay menos de 3 detecciones, si cubren menos de medio tramo o si la ultima
+        tiene mas de un tramo de antiguedad en now (sin imagen: no hay medida).
+        """
+        if len(self._samples) < 3 or now - self._samples[-1][0] > self._window:
+            return None
+        t = np.array([s[0] for s in self._samples])
+        if t[-1] - t[0] < 0.5 * self._window:
+            return None
+        los = np.array([s[1] for s in self._samples])
+        slope, intercept = np.polyfit(t - t[-1], los, 1)
+        norm = float(np.linalg.norm(intercept))
+        if norm < 1e-6:
+            return None
+        direction = intercept / norm
+        return direction, np.cross(direction, slope / norm)
+
+
+def closing_speed(r: np.ndarray, v_rel: np.ndarray) -> float:
+    """Velocidad a la que se cierra la distancia [m/s] (>= 0)."""
+    dist = float(np.linalg.norm(r))
+    return max(-float(r @ v_rel) / dist, 0.0) if dist > 1e-6 else 0.0
+
+
+def pn_acceleration(los: np.ndarray, omega: np.ndarray, v_close: float,
+                    prm: GuidanceParams) -> np.ndarray:
+    """
+    Aceleracion de la navegacion proporcional pura: N V_c (omega x lambda), hasta max_accel.
+
+    Perpendicular a la linea de vision; nula si la linea de vision no gira (rumbo de
+    colision). V_c sale de la estimacion (depende de la escala), pero solo es la ganancia:
+    un error del 20 % en ella cambia la rapidez de la correccion, no hacia donde va.
+    """
+    a = prm.pn_gain * v_close * np.cross(omega, los)
+    norm = float(np.linalg.norm(a))
+    return a * prm.max_accel / norm if norm > prm.max_accel else a
+
+
+class ProportionalNavigation:
+    """
+    Velocidad de mando del ataque por navegacion proporcional.
+
+    Arranca con la orden del rumbo de colision (la que habia al comprometerse) y a partir
+    de ahi solo la gira la aceleracion de la navegacion proporcional, integrada; el modulo
+    lo sigue poniendo el guiado de siempre (crucero y frenado). Sin medida de la linea de
+    vision, la direccion se mantiene.
+    """
+
+    def __init__(self, prm: GuidanceParams) -> None:
+        """Sin direccion hasta la primera orden."""
+        self._prm = prm
+        self.velocity = None
+
+    def reset(self) -> None:
+        """Olvida la direccion (nuevo ataque)."""
+        self.velocity = None
+
+    def update(self, v_collision: np.ndarray, measured, v_close: float,
+               dt: float) -> np.ndarray:
+        """
+        Orden de velocidad (NED).
+
+        :param v_collision: Orden del rumbo de colision (guidance_velocity): la direccion
+            inicial y el modulo en cada llamada.
+        :param measured: (direccion, velocidad angular) de LosRateEstimator.rate, o None.
+        :param v_close: Velocidad de cierre estimada [m/s].
+        :param dt: Tiempo desde la llamada anterior [s].
+        """
+        speed = float(np.linalg.norm(v_collision))
+        if self.velocity is None or float(np.linalg.norm(self.velocity)) < 1e-6:
+            self.velocity = np.array(v_collision, dtype=float)
+        elif measured is not None:
+            los, omega = measured
+            self.velocity = self.velocity + pn_acceleration(los, omega, v_close, self._prm) * dt
+        norm = float(np.linalg.norm(self.velocity))
+        if norm > 1e-6:
+            self.velocity = self.velocity * speed / norm
+        v_cmd = self.velocity.copy()
+        v_cmd[2] = min(max(v_cmd[2], -self._prm.max_vertical_speed), self._prm.max_vertical_speed)
+        return v_cmd

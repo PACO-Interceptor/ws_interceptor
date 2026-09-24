@@ -40,6 +40,12 @@ from interceptor_msgs.msg import TargetEstimate
 import numpy as np
 import rclpy
 from rclpy.executors import ExternalShutdownException
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool
+
+# QoS de interceptor/guidance_committed: el ultimo valor le llega tambien a quien se
+# suscriba tarde (el evaluador).
+COMMITTED_QOS = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 
 def enu_to_ned(x, y, z) -> np.ndarray:
@@ -96,6 +102,11 @@ class CheckpointGuidance(Px4OffboardNode):
         self._gate_elapsed = 0.0
         self.create_subscription(
             TargetEstimate, 'interceptor/target_estimate', self._estimate_callback, 10)
+        # Si ya se ha comprometido con el paso final: el evaluador distingue asi el primer
+        # ataque (lo que cuenta) de los acercamientos observando y de los reataques.
+        self._committed_pub = self.create_publisher(
+            Bool, 'interceptor/guidance_committed', COMMITTED_QOS)
+        self._committed_pub.publish(Bool(data=False))
 
     def _estimate_callback(self, msg: TargetEstimate) -> None:
         """Guarda la ultima estimacion y cuando llego."""
@@ -110,6 +121,7 @@ class CheckpointGuidance(Px4OffboardNode):
         self._coast_until = None
         self._gate = CommitGate(self._prm)
         self._gate_elapsed = 0.0
+        self._committed_pub.publish(Bool(data=False))
 
     def active_setpoint(self, elapsed: float):
         """Velocidad de guiado, recta tras el paso o parada si no hay estimacion."""
@@ -147,6 +159,7 @@ class CheckpointGuidance(Px4OffboardNode):
                                            elapsed - self._gate_elapsed, self._prm)
         self._gate_elapsed = elapsed
         if self._gate.committed and not committed:
+            self._committed_pub.publish(Bool(data=True))
             self.get_logger().info(
                 f'{"Compromiso FORZADO" if self._gate.forced else "Compromiso"} '
                 f'({self._gate.reason}): sigma {100 * rel_sigma:3.0f} %  '

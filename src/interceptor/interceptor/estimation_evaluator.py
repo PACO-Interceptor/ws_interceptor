@@ -21,7 +21,9 @@ import numpy as np
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from rclpy.time import Time
+from std_msgs.msg import Bool
 from tf2_ros import Buffer, TransformException, TransformListener
 
 CSV_COLUMNS = [
@@ -77,9 +79,22 @@ class EstimationEvaluator(Node):
         # Distancia real interceptor-pelota, para medir por cuanto pasa por el checkpoint.
         self._closest = math.inf
         self._pass_logged = False
+        # Cada acercamiento se etiqueta segun si el guiado ya se habia comprometido con el
+        # paso final cuando fue la distancia minima. Cuenta el PRIMER ATAQUE; los reataques
+        # se reportan aparte y los acercamientos observando no son un intento.
+        self._committed = False
+        self._committed_at_closest = False
+        self._attacks = 0
+        self.create_subscription(
+            Bool, 'interceptor/guidance_committed', self._committed_callback,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.create_timer(0.02, self._closest_approach_callback)
         self.create_subscription(
             TargetEstimate, 'interceptor/target_estimate', self._estimate_callback, 10)
+
+    def _committed_callback(self, msg: Bool) -> None:
+        """Guarda si el guiado ya se ha comprometido con el paso final."""
+        self._committed = msg.data
 
     def _velocity_callback(self, msg: TwistStamped) -> None:
         """Guarda la ultima velocidad real del objetivo (ENU)."""
@@ -111,10 +126,22 @@ class EstimationEvaluator(Node):
             self._pass_logged = False
         elif dist < self._closest:
             self._closest = dist
+            self._committed_at_closest = self._committed
         elif not self._pass_logged and self._closest < 5.0 and dist > self._closest + 1.0:
             self._pass_logged = True
-            self.get_logger().info(
-                f'PASO por el checkpoint: distancia minima al centro {self._closest:.2f} m')
+            if not self._committed_at_closest:
+                self.get_logger().info(
+                    f'Acercamiento sin atacar (observando): distancia minima '
+                    f'{self._closest:.2f} m')
+                return
+            self._attacks += 1
+            if self._attacks == 1:
+                self.get_logger().info(
+                    f'PASO por el checkpoint (primer ataque): distancia minima al centro '
+                    f'{self._closest:.2f} m')
+            else:
+                self.get_logger().info(
+                    f'Reataque {self._attacks - 1}: distancia minima {self._closest:.2f} m')
 
     def _estimate_callback(self, msg: TargetEstimate) -> None:
         """Compara una estimacion con la verdad y la registra."""

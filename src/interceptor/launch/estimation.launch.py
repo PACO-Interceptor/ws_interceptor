@@ -137,6 +137,21 @@ def generate_launch_description():
             'csv_path', default_value='',
             description=(
                 'CSV de la evaluacion (vacio = ~/.ros/interceptor_estimation/<fecha>.csv).')),
+        DeclareLaunchArgument(
+            'start_north_m', default_value='0.0',
+            description='Punto de espera del interceptor al norte de su origen [m] (modo '
+                        'guidance): donde lo habria dejado el piloto.'),
+        DeclareLaunchArgument(
+            'start_east_m', default_value='0.0',
+            description='Punto de espera del interceptor al este de su origen [m].'),
+        DeclareLaunchArgument(
+            'start_yaw_deg', default_value='0.0',
+            description='Rumbo de la camara mientras espera y aun no ve el checkpoint '
+                        '[grados, 0 = norte, positivo al este].'),
+        DeclareLaunchArgument(
+            'start_when_seen', default_value='false',
+            description='true: la fase activa empieza cuando la camara ya ve el checkpoint de '
+                        'cerca (traspaso desde el piloto); false: por tiempo.'),
     ]
 
     # Igual que en interceptor.launch.py: ignora SIGINT para cerrar despues que los nodos.
@@ -246,8 +261,11 @@ def generate_launch_description():
             'terminal_speed_mps': float_arg('terminal_speed_mps'),
             'slowdown_time_s': float_arg('slowdown_time_s'),
             'start_delay_s': 10.0,
-            'start_north_m': 0.0,
-            'start_east_m': 0.0,
+            'start_north_m': float_arg('start_north_m'),
+            'start_east_m': float_arg('start_east_m'),
+            'start_yaw_deg': float_arg('start_yaw_deg'),
+            'start_when_seen': ParameterValue(
+                LaunchConfiguration('start_when_seen'), value_type=bool),
         }],
         condition=IfCondition(EqualsSubstitution(LaunchConfiguration('mode'), 'guidance')),
         output='screen')

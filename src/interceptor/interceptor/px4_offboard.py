@@ -12,7 +12,11 @@ fases:
             el rumbo con aceleraciones horizontales. Sin esto, el primer vuelo tras
             arrancar PX4 empezaba el ataque con ~10 grados de incertidumbre de rumbo y el
             EKF lo corregia en plena persecucion (falla del estimador y del paso)
-    SETTLE  espera start_delay_s quieto en el punto de inicio
+    SETTLE  espera start_delay_s quieto en el punto de inicio, mirando a start_yaw_deg. Si
+            la subclase fija start_min_angle, espera ademas a que la camara lleve
+            start_sighting_time_s viendo el objetivo con un angulo subtendido de al menos
+            start_min_angle: es el traspaso desde un piloto que ha dejado el dron donde
+            el objetivo se ve bien (solo con la imagen, sin escala)
     <fase activa>  la subclase decide el setpoint (active_setpoint)
     HOLD    se queda quieto donde este, tambien en altura (bajar a altitude_m podria
             dejarlo en la trayectoria de lo que perseguia)
@@ -68,6 +72,11 @@ class Px4OffboardNode(Node):
         self._align_amplitude = self.declare_parameter('align_amplitude_m', 2.0).value
         self._align_period = self.declare_parameter('align_period_s', 3.0).value
         self._align_timeout = self.declare_parameter('align_timeout_s', 60.0).value
+        self._start_sighting_time = self.declare_parameter('start_sighting_time_s', 1.0).value
+        # Angulo subtendido minimo [rad] para empezar la fase activa; 0 = empieza por tiempo.
+        self.start_min_angle = 0.0
+        self._close_since = None     # desde cuando se ve el objetivo con start_min_angle
+        self._last_close = -math.inf
 
         self._offboard_pub = self.create_publisher(
             OffboardControlMode, f'{ns}/fmu/in/offboard_control_mode', 10)
@@ -90,7 +99,7 @@ class Px4OffboardNode(Node):
         self.velocity = None        # NED [m/s]
         self.yaw = None             # NED [rad]
         self.yaw_std = None         # incertidumbre del yaw segun PX4 [rad]
-        self.yaw_setpoint = 0.0
+        self.yaw_setpoint = math.radians(self.declare_parameter('start_yaw_deg', 0.0).value)
         self._armed = False
         self._offboard = False
         self._tick = 0
@@ -159,7 +168,11 @@ class Px4OffboardNode(Node):
                     [self._align_center[0], self._align_center[1] + side * self._align_amplitude,
                      -self.altitude], [NAN] * 3)
                 return
-        elif self.phase == 'SETTLE' and elapsed >= self._start_delay:
+        elif self.phase == 'SETTLE' and elapsed >= self._start_delay and self._seen_well():
+            if self.start_min_angle > 0.0:
+                self.get_logger().info(
+                    f'Traspaso: objetivo visto de cerca {self._start_sighting_time:.1f} s '
+                    f'tras {elapsed:.0f} s de espera.')
             self.set_phase(self._active_phase)
             self._request_estimator_reset()
             self.on_active_start()
@@ -174,6 +187,13 @@ class Px4OffboardNode(Node):
 
         z = self.hold[2] if self.phase == 'HOLD' else -self.altitude
         self.publish_setpoint([self.hold[0], self.hold[1], z], [NAN] * 3)
+
+    def _seen_well(self) -> bool:
+        """Indica si el objetivo lleva start_sighting_time_s viendose con start_min_angle."""
+        if self.start_min_angle <= 0.0:
+            return True
+        return (self._close_since is not None and self.now() - self._last_close < 0.5
+                and self._last_close - self._close_since >= self._start_sighting_time)
 
     def _request_estimator_reset(self) -> None:
         """Pide a target_estimator que olvide lo estimado hasta ahora."""
@@ -208,6 +228,12 @@ class Px4OffboardNode(Node):
             return
         azimuth = math.atan2(msg.bearing.y, msg.bearing.x)   # FLU: positivo a la izquierda
         self.yaw_setpoint = wrap_pi(self.yaw - azimuth)      # NED: positivo a la derecha
+        if self.start_min_angle > 0.0 and msg.subtended_angle >= self.start_min_angle:
+            now = self.now()
+            # Huecos de mas de 0.5 s rompen la racha: se quiere una deteccion estable.
+            if self._close_since is None or now - self._last_close > 0.5:
+                self._close_since = now
+            self._last_close = now
 
     def publish_setpoint(self, position, velocity) -> None:
         """

@@ -71,6 +71,10 @@ class CheckpointGuidance(Px4OffboardNode):
             observe_speed=self.declare_parameter(
                 'observe_speed_mps', defaults.observe_speed).value,
         )
+        # Traspaso desde el piloto: la fase activa empieza con el checkpoint ya visto a
+        # menos de observe_max_angular_range tamanos, donde el detector es fiable.
+        if self.declare_parameter('start_when_seen', False).value:
+            self.start_min_angle = 1.0 / self._prm.observe_max_angular_range
         self._pass_radius = self.declare_parameter('pass_radius_m', 5.0).value
         self._coast_time = self.declare_parameter('coast_s', 2.0).value
         self._freeze_time = self.declare_parameter('freeze_time_s', 0.2).value

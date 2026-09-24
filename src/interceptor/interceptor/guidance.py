@@ -45,8 +45,13 @@ DOWN = np.array([0.0, 0.0, 1.0])
 class GuidanceParams:
     """Parametros del guiado."""
 
-    # Velocidad del interceptor hacia el punto de encuentro [m/s].
+    # Velocidad de crucero minima del interceptor hacia el punto de encuentro [m/s]. Sube
+    # solo cuando hace falta para alcanzar el checkpoint (ver cruise_speed), hasta
+    # max_speed.
     speed: float = 3.0
+    # Lo que el dron puede dar [m/s]: debe coincidir con MPC_XY_VEL_MAX de PX4 (12 m/s por
+    # defecto), que recorta las consignas de velocidad en offboard.
+    max_speed: float = 12.0
     # En los ultimos slowdown_time segundos baja hasta terminal_speed: a 3 m/s el tramo
     # final a ciegas mide metro y medio, demasiado para un checkpoint pequeno. Nunca baja
     # de terminal_speed_margin veces la velocidad ESTIMADA del checkpoint: con poco margen
@@ -143,19 +148,47 @@ def should_freeze(time_to_pass: float, angular_range: float, freeze_time: float,
     return time_to_pass < freeze_time and angular_range < prm.freeze_max_angular_range
 
 
-def approach_speed(time_to_pass: float, target_speed: float, prm: GuidanceParams) -> float:
+def cruise_speed(r: np.ndarray, v_t: np.ndarray, size_rel_sigma: float,
+                 prm: GuidanceParams) -> float:
     """
-    Velocidad de aproximacion: baja hacia terminal_speed al acercarse el paso.
+    Velocidad de crucero: speed salvo que haga falta mas para alcanzar el checkpoint.
+
+    Sube a terminal_speed_margin veces la componente de la velocidad ESTIMADA del
+    checkpoint que se aleja del interceptor (con 3 m/s fijos, uno a 2 m/s que se aleja
+    apenas se dejaba alcanzar), y a ese margen sobre su modulo si ni asi hay punto de
+    encuentro (checkpoint rapido cruzando). Nunca pasa de max_speed. Solo lo que hace
+    falta: ir mas deprisa de lo necesario empeoraba el paso (lazo sintetico: de frente y
+    alejandose a 2 m/s, 6/10 con 1.8 veces el modulo frente a 10/10 con 3 m/s).
+
+    La velocidad estimada escala con el tamano estimado, asi que se toma su cota baja,
+    v_t (1 - size_rel_sigma): con la escala aun sin conocer (tamano 3 veces sobreestimado
+    al empezar) subir el crucero echaba el interceptor encima del checkpoint al observar.
+    """
+    v_t = v_t * max(1.0 - size_rel_sigma, 0.0)
+    dist = float(np.linalg.norm(r))
+    receding = max(float(r @ v_t) / dist, 0.0) if dist > 1e-6 else 0.0
+    speed = max(prm.speed, prm.terminal_speed_margin * receding)
+    if intercept_time(r, v_t, speed) is None:
+        speed = max(speed, prm.terminal_speed_margin * float(np.linalg.norm(v_t)))
+    return min(speed, prm.max_speed)
+
+
+def approach_speed(time_to_pass: float, target_speed: float, prm: GuidanceParams,
+                   cruise: Optional[float] = None) -> float:
+    """
+    Velocidad de aproximacion: la de crucero, bajando hacia terminal_speed al acercarse el paso.
 
     target_speed es el modulo de la velocidad ESTIMADA del checkpoint; el frenado no baja
     de terminal_speed_margin veces esa velocidad, ni de la velocidad de crucero si el
-    checkpoint resultara ser mas rapido que ella.
+    checkpoint resultara ser mas rapido que ella. cruise es la velocidad de crucero
+    (cruise_speed); por defecto, speed.
     """
+    cruise = prm.speed if cruise is None else cruise
     if not math.isfinite(time_to_pass) or time_to_pass >= prm.slowdown_time:
-        return prm.speed
-    floor = min(max(prm.terminal_speed, prm.terminal_speed_margin * target_speed), prm.speed)
+        return cruise
+    floor = min(max(prm.terminal_speed, prm.terminal_speed_margin * target_speed), cruise)
     f = max(time_to_pass, 0.0) / prm.slowdown_time
-    return floor + f * (prm.speed - floor)
+    return floor + f * (cruise - floor)
 
 
 def excitation_gain(size_rel_sigma: float, t_go: float, prm: GuidanceParams) -> float:
@@ -173,6 +206,7 @@ def guidance_velocity(
     tau: float,
     prm: GuidanceParams,
     time_to_pass: Optional[float] = None,
+    excite: bool = True,
 ) -> Tuple[np.ndarray, float, float]:
     """
     Velocidad de mando (NED) hacia el punto de encuentro, con la excitacion sumada.
@@ -184,10 +218,12 @@ def guidance_velocity(
     :param prm: Parametros.
     :param time_to_pass: Tiempo hasta el paso para apagar la excitacion en el tramo
         final; por defecto, el t_go del punto de encuentro (que depende de la escala).
+    :param excite: False para no sumar excitacion aunque el tamano no se conozca.
     :return: (velocidad de mando, t_go, fraccion de excitacion aplicada).
     """
     speed = approach_speed(time_to_pass if time_to_pass is not None else math.inf,
-                           float(np.linalg.norm(v_t)), prm)
+                           float(np.linalg.norm(v_t)), prm,
+                           cruise_speed(r, v_t, size_rel_sigma, prm))
     t_go = intercept_time(r, v_t, speed)
     if t_go is None:
         t_go = float(np.linalg.norm(r)) / speed       # persecucion pura como respaldo
@@ -198,7 +234,8 @@ def guidance_velocity(
     direction = aim / norm if norm > 1e-6 else np.zeros(3)
     v_cmd = speed * direction
 
-    gain = excitation_gain(size_rel_sigma, t_go if time_to_pass is None else time_to_pass, prm)
+    gain = excitation_gain(size_rel_sigma, t_go if time_to_pass is None else time_to_pass,
+                           prm) if excite else 0.0
     lateral = np.cross(direction, DOWN)
     lateral_norm = float(np.linalg.norm(lateral))
     if gain > 0.0 and lateral_norm > 1e-6:
@@ -223,7 +260,8 @@ def time_to_contact(r: np.ndarray, v_rel: np.ndarray) -> float:
 
 
 def hold_off(v_cmd: np.ndarray, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarray,
-             angular_range: float, prm: GuidanceParams) -> np.ndarray:
+             angular_range: float, prm: GuidanceParams,
+             size_rel_sigma: float = 0.0) -> np.ndarray:
     """
     Limita la velocidad de cierre de la orden para no bajar de standoff_time.
 
@@ -232,7 +270,8 @@ def hold_off(v_cmd: np.ndarray, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarra
     checkpoint, por debajo de observe_max_angular_range), y siempre a u.v_own +
     standoff_gain (tiempo hasta el contacto - standoff_time): si el contacto llegaria
     antes de standoff_time, pide cerrar mas despacio que ahora (y retroceder si hace
-    falta, como mucho a prm.speed); si llegaria despues, deja acelerar poco a poco. La
+    falta, como mucho a la velocidad de crucero); si llegaria despues, deja acelerar poco
+    a poco. Si la distancia se abre, sube la componente para no perder el checkpoint. La
     componente lateral, y con ella la excitacion, no se toca.
 
     Se realimenta con el tiempo hasta el contacto, que no depende de la escala, y sobre
@@ -245,15 +284,26 @@ def hold_off(v_cmd: np.ndarray, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarra
     if dist < 1e-6:
         return v_cmd
     u = r / dist
-    limit = prm.observe_speed if angular_range < prm.observe_max_angular_range else math.inf
+    own = float(u @ v_own)
+    upper = prm.observe_speed if angular_range < prm.observe_max_angular_range else math.inf
     tau = time_to_contact(r, v_t - v_own)
     if math.isfinite(tau):
-        limit = min(limit, float(u @ v_own) + prm.standoff_gain * (tau - prm.standoff_time))
-    limit = max(limit, -prm.speed)
+        upper = min(upper, own + prm.standoff_gain * (tau - prm.standoff_time))
+    upper = max(upper, -cruise_speed(r, v_t, size_rel_sigma, prm))
+    # Si la distancia se abre, no dejarlo escapar: al observar sin la escala, el crucero no
+    # sube (cota baja de la velocidad) y un checkpoint que se aleja salia del alcance del
+    # detector. Tambien se realimenta sobre la velocidad propia: el equilibrio (no se abre
+    # distancia) no depende de la escala. Manda sobre el limite superior.
+    opening = float(u @ (v_t - v_own))
+    lower = own + prm.standoff_gain * opening if opening > 0.0 else -math.inf
     closing = float(u @ v_cmd)
-    if closing <= limit:
+    target = min(max(closing, lower), max(upper, lower))
+    if target == closing:
         return v_cmd
-    out = v_cmd + (limit - closing) * u
+    out = v_cmd + (target - closing) * u
+    norm = float(np.linalg.norm(out))
+    if norm > prm.max_speed:
+        out *= prm.max_speed / norm
     out[2] = min(max(out[2], -prm.max_vertical_speed), prm.max_vertical_speed)
     return out
 
@@ -324,7 +374,9 @@ def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.n
     gate.update(size_rel_sigma, t_contact, dt)
     if not gate.committed:
         v_cmd, _, gain = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_contact)
-        return hold_off(v_cmd, r, v_t, v_own, angular_range, prm), t_contact, gain
+        return (hold_off(v_cmd, r, v_t, v_own, angular_range, prm, size_rel_sigma),
+                t_contact, gain)
     t_pass = time_to_closest_approach(r, v_rel)
-    v_cmd, _, gain = guidance_velocity(r, v_t, 0.0, tau, prm, t_pass)
+    v_cmd, _, gain = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_pass,
+                                       excite=False)
     return v_cmd, t_pass, gain

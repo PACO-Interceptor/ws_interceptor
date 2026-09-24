@@ -3,8 +3,9 @@
 import math
 
 from interceptor.bearing_angle_filter import BearingAngleFilter, FilterParams
-from interceptor.guidance import approach_speed, excitation_gain, guidance_velocity
+from interceptor.guidance import approach_speed, cruise_speed, excitation_gain
 from interceptor.guidance import CommitGate, gated_velocity, GuidanceParams, hold_off
+from interceptor.guidance import guidance_velocity
 from interceptor.guidance import intercept_time, should_freeze, time_to_closest_approach
 from interceptor.guidance import time_to_contact
 import numpy as np
@@ -170,6 +171,42 @@ def test_approach_speed_keeps_margin_over_the_estimated_target_speed():
     assert approach_speed(0.0, rapido, prm) == pytest.approx(prm.terminal_speed_margin * rapido)
     # Nunca por encima de la velocidad de crucero, aunque el checkpoint parezca muy rapido.
     assert approach_speed(0.0, 100.0, prm) == pytest.approx(prm.speed)
+
+
+def test_cruise_speed_only_rises_when_needed_to_catch_the_checkpoint():
+    """
+    Crucero: sube solo si hace falta para alcanzar el checkpoint.
+
+    speed si el checkpoint cruza o viene de frente; mas si se aleja o si no hay punto de
+    encuentro; nunca por encima de max_speed. Con 3 m/s fijos, un checkpoint a 2 m/s que
+    se aleja apenas se deja alcanzar (Gazebo). Solo se usa la velocidad ESTIMADA.
+    """
+    prm = GuidanceParams()
+    r = np.array([10.0, 0.0, 0.0])
+    assert cruise_speed(r, np.array([0.0, 2.0, 0.0]), 0.0, prm) == prm.speed     # cruza
+    assert cruise_speed(r, np.array([-2.0, 0.0, 0.0]), 0.0, prm) == prm.speed    # de frente
+    away = cruise_speed(r, np.array([2.0, 0.0, 0.0]), 0.0, prm)
+    assert away == pytest.approx(prm.terminal_speed_margin * 2.0)
+    fast_crossing = np.array([0.0, 5.0, 0.0])
+    assert intercept_time(r, fast_crossing, prm.speed) is None
+    assert cruise_speed(r, fast_crossing, 0.0, prm) == pytest.approx(
+        prm.terminal_speed_margin * 5.0)
+    assert cruise_speed(r, np.array([50.0, 0.0, 0.0]), 0.0, prm) == prm.max_speed
+    v_cmd, _, _ = guidance_velocity(r, np.array([2.0, 0.0, 0.0]), 0.0, 0.0, prm)
+    assert np.linalg.norm(v_cmd) == pytest.approx(away)
+
+
+def test_cruise_speed_uses_the_low_bound_of_the_estimated_speed():
+    """
+    Con la escala sin conocer no acelera por una velocidad que puede estar inflada.
+
+    La velocidad estimada escala con el tamano estimado: se usa v (1 - sigma relativa).
+    """
+    prm = GuidanceParams()
+    r, away = np.array([10.0, 0.0, 0.0]), np.array([4.0, 0.0, 0.0])
+    assert cruise_speed(r, away, 0.7, prm) == prm.speed
+    assert cruise_speed(r, away, 0.1, prm) == pytest.approx(
+        prm.terminal_speed_margin * 4.0 * 0.9)
 
 
 def test_time_to_contact_is_infinite_when_the_checkpoint_passes_by():

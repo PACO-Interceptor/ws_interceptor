@@ -62,6 +62,7 @@ class CheckpointGuidance(Px4OffboardNode):
         defaults = GuidanceParams()
         self._prm = GuidanceParams(
             speed=self.declare_parameter('speed_mps', defaults.speed).value,
+            max_speed=self.declare_parameter('max_speed_mps', defaults.max_speed).value,
             excitation_amp=self.declare_parameter(
                 'excitation_amp_mps', defaults.excitation_amp).value,
             excitation_freq=self.declare_parameter(

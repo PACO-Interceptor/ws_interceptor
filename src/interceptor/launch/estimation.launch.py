@@ -142,6 +142,10 @@ def generate_launch_description():
             description='Perfil del objetivo (solo banco): line (velocidad constante) o maneuver '
                         '(velocidad y rumbo oscilando).'),
         DeclareLaunchArgument(
+            'target_max_accel_mps2', default_value='2.45',
+            description='Aceleracion maxima del perfil maneuver [m/s^2] (0.25 g por defecto, la '
+                        'especificacion del checkpoint); fija los periodos de la oscilacion.'),
+        DeclareLaunchArgument(
             'start_altitude_m', default_value='10.0',
             description='Altura de espera y de vuelo del interceptor en modo guidance [m]: donde '
                         'lo habria dejado el piloto (a la altura del checkpoint).'),
@@ -245,6 +249,7 @@ def generate_launch_description():
             'line_speed_mps': float_arg('target_speed_mps'),
             'line_length_m': float_arg('target_line_length_m'),
             'line_start_delay_s': 10.0,
+            'maneuver_max_accel_mps2': float_arg('target_max_accel_mps2'),
         }],
         output='screen')
 

@@ -63,6 +63,25 @@ public:
     maneuver_speed_period_s_ = this->declare_parameter<double>("maneuver_speed_period_s", 8.0);
     maneuver_turn_deg_ = this->declare_parameter<double>("maneuver_turn_deg", 45.0);
     maneuver_turn_period_s_ = this->declare_parameter<double>("maneuver_turn_period_s", 10.0);
+    // Si maneuver_max_accel_mps2 > 0, los periodos se calculan a partir de ella en lugar de
+    // usar los de arriba: cada componente (tangencial por el cambio de velocidad y normal por
+    // el giro) llega como mucho a max_accel/sqrt(2), asi que la aceleracion total no pasa de
+    // max_accel. Los periodos no bajan de maneuver_min_period_s para que a poca velocidad no
+    // se convierta en una vibracion.
+    maneuver_max_accel_mps2_ = this->declare_parameter<double>("maneuver_max_accel_mps2", 0.0);
+    maneuver_min_period_s_ = this->declare_parameter<double>("maneuver_min_period_s", 2.0);
+    if (maneuver_max_accel_mps2_ > 0.0) {
+      const double component = maneuver_max_accel_mps2_ / std::sqrt(2.0);
+      const double two_pi = 2.0 * M_PI;
+      // Tangencial: v0 * amp * 2pi/T. Normal: v_max * giro * 2pi/T, con v_max = v0 (1 + amp).
+      maneuver_speed_period_s_ = std::max(
+        maneuver_min_period_s_,
+        two_pi * line_speed_mps_ * maneuver_speed_amp_ / component);
+      maneuver_turn_period_s_ = std::max(
+        maneuver_min_period_s_,
+        two_pi * line_speed_mps_ * (1.0 + maneuver_speed_amp_) *
+        maneuver_turn_deg_ * M_PI / 180.0 / component);
+    }
     if (trajectory_type_ != "circle" && trajectory_type_ != "line" &&
       trajectory_type_ != "maneuver")
     {
@@ -313,6 +332,8 @@ private:
   double maneuver_speed_period_s_;
   double maneuver_turn_deg_;
   double maneuver_turn_period_s_;
+  double maneuver_max_accel_mps2_;
+  double maneuver_min_period_s_;
   double maneuver_north_m_{0.0};
   double maneuver_east_m_{0.0};
   double maneuver_travelled_m_{0.0};

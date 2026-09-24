@@ -95,6 +95,10 @@ class CheckpointGuidance(Px4OffboardNode):
 
         self._estimate = None
         self._estimate_time = -math.inf
+        # Tras pedir el reinicio del estimador solo valen estimaciones con reset_count mayor
+        # que el de la ultima recibida (None = no se ha recibido ninguna: valen todas).
+        self._last_reset_count = None
+        self._min_reset_count = None
         self._last_cmd = None
         self._last_t_go = math.inf
         self._coast_until = None
@@ -112,12 +116,21 @@ class CheckpointGuidance(Px4OffboardNode):
         self._committed_pub.publish(Bool(data=False))
 
     def _estimate_callback(self, msg: TargetEstimate) -> None:
-        """Guarda la ultima estimacion y cuando llego."""
+        """Guarda la ultima estimacion y cuando llego, salvo las previas al reinicio."""
+        if self._min_reset_count is not None and msg.reset_count < self._min_reset_count:
+            # Tras pedir el reinicio del estimador aun pueden llegar estimaciones del filtro
+            # viejo. En Gazebo una de ellas (sigma 11 %, del filtro que miraba la pelota
+            # durante la alineacion) hizo que la puerta se comprometiera nada mas empezar,
+            # con el filtro nuevo aun en sigma 64 %.
+            return
+        self._last_reset_count = msg.reset_count
         self._estimate = msg
         self._estimate_time = self.now()
 
     def on_active_start(self) -> None:
         """Olvida la estimacion previa al reinicio del estimador."""
+        if self._last_reset_count is not None:
+            self._min_reset_count = self._last_reset_count + 1
         self._estimate = None
         self._last_cmd = None
         self._last_t_go = math.inf

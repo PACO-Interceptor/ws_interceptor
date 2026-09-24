@@ -72,6 +72,7 @@ class TargetEstimator(Node):
         self._last_stamp = None
         self._rejected = 0
         self._consecutive_rejections = 0
+        self._resets = 0
 
         self._tf_buffer = Buffer()
         # Sin esperar en el callback: cuando llega una observacion, YOLO ya ha tardado
@@ -95,6 +96,7 @@ class TargetEstimator(Node):
     def _reset_callback(self, request, response):
         """Olvida la estimacion: la proxima observacion vuelve a partir del prior."""
         self._filter.reset()
+        self._resets += 1
         self._last_stamp = None
         self.get_logger().info('Estimacion reiniciada a peticion.')
         response.success = True
@@ -128,6 +130,7 @@ class TargetEstimator(Node):
                     f'Objetivo perdido {dt:.1f} s: se reinicia la estimacion '
                     f'conservando el tamano ({self._filter.size:.2f} m).')
                 self._filter.reset(keep_size=True)
+                self._resets += 1
         else:
             dt = 0.0
 
@@ -169,6 +172,7 @@ class TargetEstimator(Node):
                         f'{self._consecutive_rejections} observaciones rechazadas seguidas: '
                         'el filtro ha divergido y se reinicia.')
                     self._filter.reset()
+                    self._resets += 1
                     self._consecutive_rejections = 0
                     self._last_stamp = None
                     return
@@ -194,6 +198,7 @@ class TargetEstimator(Node):
         out.range = float(f.distance)
         out.angular_range = float(f.angular_range)
         out.update_count = f.update_count
+        out.reset_count = self._resets
         self._estimate_pub.publish(out)
 
         if self._publish_tf and all(math.isfinite(c) for c in p):

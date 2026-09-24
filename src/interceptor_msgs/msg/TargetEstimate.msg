@@ -27,3 +27,8 @@ float64 angular_range
 
 # Numero de observaciones incorporadas desde la ultima (re)inicializacion.
 uint32 update_count
+
+# Numero de reinicios del estimador desde que arranco el nodo (a peticion, por perdida o por
+# divergencia). Sirve para descartar estimaciones anteriores a un reinicio pedido: pueden
+# seguir llegando despues de pedirlo.
+uint32 reset_count

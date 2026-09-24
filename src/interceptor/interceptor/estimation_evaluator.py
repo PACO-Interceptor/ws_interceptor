@@ -121,27 +121,37 @@ class EstimationEvaluator(Node):
         i = interceptor_tf.transform.translation
         dist = float(np.linalg.norm(ball - np.array([i.x, i.y, i.z])))
         if dist > 6.0:
-            # Lejos: se rearma para registrar el proximo paso.
+            # Lejos: se cierra el paso pendiente (si lo hay) y se rearma para el proximo.
+            if not self._pass_logged and self._closest < 5.0:
+                self._log_pass()
             self._closest = math.inf
             self._pass_logged = False
         elif dist < self._closest:
             self._closest = dist
             self._committed_at_closest = self._committed
-        elif not self._pass_logged and self._closest < 5.0 and dist > self._closest + 1.0:
-            self._pass_logged = True
-            if not self._committed_at_closest:
-                self.get_logger().info(
-                    f'Acercamiento sin atacar (observando): distancia minima '
-                    f'{self._closest:.2f} m')
-                return
-            self._attacks += 1
-            if self._attacks == 1:
-                self.get_logger().info(
-                    f'PASO por el checkpoint (primer ataque): distancia minima al centro '
-                    f'{self._closest:.2f} m')
-            else:
-                self.get_logger().info(
-                    f'Reataque {self._attacks - 1}: distancia minima {self._closest:.2f} m')
+        elif not self._pass_logged and self._closest < 5.0 and \
+                dist > self._closest + max(1.0, self._closest):
+            # El paso acaba cuando la distancia se aleja 1 m y ademas duplica el minimo: con un
+            # checkpoint que maniobra, un minimo lejano (3.6 m) puede ir seguido de una subida
+            # de 1 m y del paso de verdad unos segundos despues, dentro del mismo ataque.
+            self._log_pass()
+
+    def _log_pass(self) -> None:
+        """Registra el paso cerrado: primer ataque, reataque o acercamiento observando."""
+        self._pass_logged = True
+        if not self._committed_at_closest:
+            self.get_logger().info(
+                f'Acercamiento sin atacar (observando): distancia minima '
+                f'{self._closest:.2f} m')
+            return
+        self._attacks += 1
+        if self._attacks == 1:
+            self.get_logger().info(
+                f'PASO por el checkpoint (primer ataque): distancia minima al centro '
+                f'{self._closest:.2f} m')
+        else:
+            self.get_logger().info(
+                f'Reataque {self._attacks - 1}: distancia minima {self._closest:.2f} m')
 
     def _estimate_callback(self, msg: TargetEstimate) -> None:
         """Compara una estimacion con la verdad y la registra."""

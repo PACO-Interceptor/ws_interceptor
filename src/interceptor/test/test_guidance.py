@@ -3,7 +3,7 @@
 import math
 
 from interceptor.bearing_angle_filter import BearingAngleFilter, FilterParams
-from interceptor.guidance import approach_speed, cruise_speed, excitation_gain
+from interceptor.guidance import approach_speed, base_speed, cruise_speed, excitation_gain
 from interceptor.guidance import CommitGate, gated_velocity, GuidanceParams, hold_off
 from interceptor.guidance import guidance_velocity, level_velocity
 from interceptor.guidance import intercept_time, should_freeze, time_to_closest_approach
@@ -43,8 +43,9 @@ def test_guidance_points_to_intercept_point():
     v_cmd, t_go, gain = guidance_velocity(r, v, 0.0, 0.0, prm)
     aim = r + v * t_go
     assert gain == 0.0
-    assert np.linalg.norm(v_cmd) == pytest.approx(prm.speed)
-    assert v_cmd / prm.speed == pytest.approx(aim / np.linalg.norm(aim))
+    speed = cruise_speed(r, v, 0.0, prm)
+    assert np.linalg.norm(v_cmd) == pytest.approx(speed)
+    assert v_cmd / speed == pytest.approx(aim / np.linalg.norm(aim))
 
 
 def fly(seed, excitation_amp, blind_range=3.0, rate=11.0):
@@ -209,6 +210,14 @@ def test_cruise_speed_uses_the_low_bound_of_the_estimated_speed():
         prm.terminal_speed_margin * 4.0 * 0.9)
 
 
+def test_cruise_speed_is_slow_only_when_attacking_a_slow_checkpoint():
+    """Al atacar un checkpoint quieto, velocidad terminal; observando, speed."""
+    prm = GuidanceParams()
+    r = np.array([6.0, 0.0, 0.0])
+    assert cruise_speed(r, np.zeros(3), 0.1, prm, slow_attack=True) == prm.terminal_speed
+    assert cruise_speed(r, np.zeros(3), 0.1, prm) == prm.speed
+
+
 def test_time_to_contact_is_infinite_when_the_checkpoint_passes_by():
     """
     De frente: distancia entre cierre. Cruzando lejos por delante: infinito.
@@ -371,6 +380,33 @@ def test_observing_uses_the_level_velocity():
     v_cmd, _, _ = gated_velocity(CommitGate(prm), r, np.zeros(3), np.zeros(3), 0.7, 40.0, 0.3,
                                  0.1, prm)
     assert v_cmd[2] == pytest.approx(level_velocity(r, np.zeros(3), prm))
+
+
+def test_base_speed_is_slow_for_a_slow_checkpoint():
+    """Checkpoint quieto: velocidad terminal; rapido: speed; en medio, el margen."""
+    prm = GuidanceParams()
+    assert base_speed(np.zeros(3), 0.0, prm) == prm.terminal_speed
+    assert base_speed(np.array([0.0, 1.0, 0.0]), 0.0, prm) == pytest.approx(
+        prm.terminal_speed_margin * 1.0)
+    assert base_speed(np.array([0.0, 4.0, 0.0]), 0.0, prm) == prm.speed
+    # Cota alta: con la escala sin conocer no frena.
+    assert base_speed(np.array([0.0, 1.0, 0.0]), 0.9, prm) == prm.speed
+
+
+def test_hold_off_backs_away_from_a_close_crossing_checkpoint():
+    """
+    Retrocede si el checkpoint esta demasiado cerca aunque solo cruce.
+
+    El tiempo hasta el contacto es infinito, pero esta mas cerca que base_speed *
+    terminal_time.
+    """
+    prm = GuidanceParams()
+    r, v_t = np.array([3.0, 0.0, 0.0]), np.array([0.0, 0.5, 0.0])     # a 3 m, cruzando
+    assert time_to_contact(r, v_t) == math.inf
+    out = hold_off(np.array([1.0, 0.0, 0.0]), r, v_t, np.zeros(3), 10.0, prm)
+    assert out[0] < 0.0
+    far = np.array([6.0, 0.0, 0.0])                                    # mas alla del suelo
+    assert hold_off(np.array([1.0, 0.0, 0.0]), far, v_t, np.zeros(3), 20.0, prm)[0] > 0.0
 
 
 def test_radial_excitation_moves_along_the_line_of_sight():

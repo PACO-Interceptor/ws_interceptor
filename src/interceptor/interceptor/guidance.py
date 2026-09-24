@@ -45,9 +45,9 @@ DOWN = np.array([0.0, 0.0, 1.0])
 class GuidanceParams:
     """Parametros del guiado."""
 
-    # Velocidad de crucero minima del interceptor hacia el punto de encuentro [m/s]. Sube
-    # solo cuando hace falta para alcanzar el checkpoint (ver cruise_speed), hasta
-    # max_speed.
+    # Velocidad de crucero del interceptor hacia el punto de encuentro [m/s] con un
+    # checkpoint que no es lento; con uno lento baja hasta terminal_speed (ver base_speed) y
+    # sube solo cuando hace falta para alcanzarlo (ver cruise_speed), hasta max_speed.
     speed: float = 3.0
     # Lo que el dron puede dar [m/s]: debe coincidir con MPC_XY_VEL_MAX de PX4 (12 m/s por
     # defecto), que recorta las consignas de velocidad en offboard.
@@ -160,10 +160,33 @@ def should_freeze(time_to_pass: float, angular_range: float, freeze_time: float,
     return time_to_pass < freeze_time and angular_range < prm.freeze_max_angular_range
 
 
-def cruise_speed(r: np.ndarray, v_t: np.ndarray, size_rel_sigma: float,
-                 prm: GuidanceParams) -> float:
+def base_speed(v_t: np.ndarray, size_rel_sigma: float, prm: GuidanceParams) -> float:
     """
-    Velocidad de crucero: speed salvo que haga falta mas para alcanzar el checkpoint.
+    Velocidad de ataque de partida, segun lo rapido que va el checkpoint.
+
+    Es terminal_speed_margin veces su velocidad estimada, entre terminal_speed y speed.
+    Se usa la cota ALTA de la velocidad, v (1 + size_rel_sigma): solo se frena cuando se
+    esta seguro de que el checkpoint es lento. Con la cota baja, con la escala aun
+    incierta iba despacio y lo perdia (lazo sintetico: cruce a 2 m/s de 10/10 a 3/10).
+
+    Con un checkpoint lento no hace falta ir a speed, y el ataque tiene que durar
+    terminal_time sin excitacion antes del paso: a 3 m/s eso pide comprometerse a ~12 m y
+    el detector solo es fiable hasta ~7.5 m con la pelota de 0.30 m (validacion del 24/09:
+    a 0.5 y 1 m/s se comprometia a ~4 m y el ataque duraba ~1.3 s). Sin constantes nuevas.
+    """
+    v = float(np.linalg.norm(v_t)) * (1.0 + size_rel_sigma)
+    return min(max(prm.terminal_speed, prm.terminal_speed_margin * v), prm.speed)
+
+
+def cruise_speed(r: np.ndarray, v_t: np.ndarray, size_rel_sigma: float,
+                 prm: GuidanceParams, slow_attack: bool = False) -> float:
+    """
+    Velocidad de crucero: la de partida salvo que haga falta mas para alcanzarlo.
+
+    La de partida es speed, o base_speed si slow_attack. slow_attack solo al atacar tras
+    comprometerse por escala: justo tras reiniciar el estimador la velocidad estimada es
+    cero, y observando (o tras un compromiso forzado) iba despacio y lo perdia o fallaba
+    de frente (lazo sintetico).
 
     Sube a terminal_speed_margin veces la componente de la velocidad ESTIMADA del
     checkpoint que se aleja del interceptor (con 3 m/s fijos, uno a 2 m/s que se aleja
@@ -176,10 +199,11 @@ def cruise_speed(r: np.ndarray, v_t: np.ndarray, size_rel_sigma: float,
     v_t (1 - size_rel_sigma): con la escala aun sin conocer (tamano 3 veces sobreestimado
     al empezar) subir el crucero echaba el interceptor encima del checkpoint al observar.
     """
+    base = base_speed(v_t, size_rel_sigma, prm) if slow_attack else prm.speed
     v_t = v_t * max(1.0 - size_rel_sigma, 0.0)
     dist = float(np.linalg.norm(r))
     receding = max(float(r @ v_t) / dist, 0.0) if dist > 1e-6 else 0.0
-    speed = max(prm.speed, prm.terminal_speed_margin * receding)
+    speed = max(base, prm.terminal_speed_margin * receding)
     if intercept_time(r, v_t, speed) is None:
         speed = max(speed, prm.terminal_speed_margin * float(np.linalg.norm(v_t)))
     return min(speed, prm.max_speed)
@@ -219,6 +243,7 @@ def guidance_velocity(
     prm: GuidanceParams,
     time_to_pass: Optional[float] = None,
     excite: bool = True,
+    slow_attack: bool = False,
 ) -> Tuple[np.ndarray, float, float]:
     """
     Velocidad de mando (NED) hacia el punto de encuentro, con la excitacion sumada.
@@ -231,11 +256,13 @@ def guidance_velocity(
     :param time_to_pass: Tiempo hasta el paso para apagar la excitacion en el tramo
         final; por defecto, el t_go del punto de encuentro (que depende de la escala).
     :param excite: False para no sumar excitacion aunque el tamano no se conozca.
+    :param slow_attack: True al atacar: con un checkpoint lento, crucero mas lento
+        (base_speed).
     :return: (velocidad de mando, t_go, fraccion de excitacion aplicada).
     """
     speed = approach_speed(time_to_pass if time_to_pass is not None else math.inf,
                            float(np.linalg.norm(v_t)), prm,
-                           cruise_speed(r, v_t, size_rel_sigma, prm))
+                           cruise_speed(r, v_t, size_rel_sigma, prm, slow_attack))
     t_go = intercept_time(r, v_t, speed)
     if t_go is None:
         t_go = float(np.linalg.norm(r)) / speed       # persecucion pura como respaldo
@@ -301,6 +328,19 @@ def hold_off(v_cmd: np.ndarray, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarra
     tau = time_to_contact(r, v_t - v_own)
     if math.isfinite(tau):
         upper = min(upper, own + prm.standoff_gain * (tau - prm.standoff_time))
+    # Suelo de distancia con un checkpoint lento (ataque por debajo de speed): el ataque
+    # necesita terminal_time a esa velocidad; si el checkpoint esta mas cerca, retroceder
+    # aunque no venga hacia el dron (uno lento que cruza no baja el tiempo hasta el
+    # contacto). Como mucho a observe_max_angular_range tamanos, el alcance fiable del
+    # detector. Con uno rapido no se aplica: el suelo quedaba en ese borde del alcance y
+    # el dron perdia detecciones (lazo sintetico: de 10/10 a 5-7/10 en cruce a 2 m/s y a
+    # 4 m/s de frente o alejandose).
+    base = base_speed(v_t, size_rel_sigma, prm)
+    floor = base * prm.terminal_time if base < prm.speed else 0.0
+    if angular_range > 1e-6:
+        floor = min(floor, dist * prm.observe_max_angular_range / angular_range)
+    if dist < floor:
+        upper = min(upper, own + prm.standoff_gain * (dist - floor) / base)
     upper = max(upper, -cruise_speed(r, v_t, size_rel_sigma, prm))
     # Si la distancia se abre, no dejarlo escapar: al observar sin la escala, el crucero no
     # sube (cota baja de la velocidad) y un checkpoint que se aleja salia del alcance del
@@ -419,5 +459,5 @@ def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.n
         return v_cmd, t_contact, gain
     t_pass = time_to_closest_approach(r, v_rel)
     v_cmd, _, gain = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_pass,
-                                       excite=False)
+                                       excite=False, slow_attack=not gate.forced)
     return v_cmd, t_pass, gain

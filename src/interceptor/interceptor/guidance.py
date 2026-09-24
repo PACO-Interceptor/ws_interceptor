@@ -96,6 +96,10 @@ class GuidanceParams:
     # mantener la distancia), o si se lleva max_observe_time observando.
     forced_commit_hold: float = 0.5
     max_observe_time: float = 25.0
+    # Aceleracion horizontal maxima del propio dron [m/s^2]: MPC_ACC_HOR_MAX de PX4 (5 por
+    # defecto; en los vuelos de Gazebo el interceptor llega a p99 5 m/s^2). Con ella,
+    # reverse_time es lo que tarda en pasar de acercarse a speed a retroceder a speed.
+    max_accel: float = 5.0
     # Ganancia de la retencion al observar [m/s por s de error en el tiempo hasta el
     # contacto].
     standoff_gain: float = 0.5
@@ -111,6 +115,11 @@ class GuidanceParams:
     # pasa mas de la mitad del tiempo sin ver nada (vuelos de Gazebo, cualquier pelota),
     # y observar desde ahi es solo perder detecciones y reiniciar el filtro.
     observe_max_angular_range: float = 25.0
+
+    @property
+    def reverse_time(self) -> float:
+        """Tiempo para invertir la velocidad propia a lo largo de la linea de vision [s]."""
+        return 2.0 * self.speed / self.max_accel
 
     @property
     def standoff_time(self) -> float:
@@ -298,6 +307,42 @@ def time_to_contact(r: np.ndarray, v_rel: np.ndarray) -> float:
     return dist / closing if closing > 1e-6 else math.inf
 
 
+def contact_time_sigma(r: np.ndarray, v_rel: np.ndarray,
+                       cov: Optional[np.ndarray]) -> float:
+    """
+    Desviacion tipica del tiempo hasta el contacto, por propagacion lineal.
+
+    tau = |r|^2 / c con c = -r.v_rel; cov es la covarianza 6x6 de la posicion y la
+    velocidad del checkpoint (la propia del dron se da por exacta). 0 si no hay
+    covarianza o no se cierra distancia.
+    """
+    closing = -float(r @ v_rel)
+    if cov is None or closing <= 1e-9:
+        return 0.0
+    dist2 = float(r @ r)
+    grad = np.concatenate((2.0 * r / closing + dist2 * v_rel / closing ** 2,
+                           dist2 * r / closing ** 2))
+    return math.sqrt(max(float(grad @ cov @ grad), 0.0))
+
+
+def can_hold_distance(r: np.ndarray, v_t: np.ndarray, size_rel_sigma: float,
+                      contact_time_high: float, prm: GuidanceParams) -> bool:
+    """
+    Indica si retrocediendo aun se puede mantener la distancia al checkpoint.
+
+    Hace falta que el checkpoint no se acerque mas deprisa que speed (a lo que retrocede
+    hold_off como poco), con la cota baja de su velocidad v_t (1 - size_rel_sigma) porque
+    la estimada escala con el tamano, y que el contacto no llegue antes de lo que el dron
+    tarda en invertir la marcha (reverse_time), con la cota alta del tiempo hasta el
+    contacto.
+    """
+    dist = float(np.linalg.norm(r))
+    if dist < 1e-6:
+        return False
+    approach = max(-float(r @ v_t) / dist, 0.0) * max(1.0 - size_rel_sigma, 0.0)
+    return approach < prm.speed and contact_time_high > prm.reverse_time
+
+
 def hold_off(v_cmd: np.ndarray, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarray,
              angular_range: float, prm: GuidanceParams,
              size_rel_sigma: float = 0.0) -> np.ndarray:
@@ -379,17 +424,26 @@ class CommitGate:
         self._observe_time = 0.0
         self._short_time = 0.0
 
-    def update(self, size_rel_sigma: float, contact_time: float, dt: float) -> bool:
+    def update(self, size_rel_sigma: float, contact_time: float, dt: float,
+               can_hold: bool = False) -> bool:
         """
         Actualiza con la sigma relativa del tamano y el tiempo hasta el contacto.
 
+        :param contact_time: Tiempo hasta el contacto (su cota alta si se conoce).
+        :param can_hold: True si retrocediendo aun se puede mantener la distancia
+            (can_hold_distance): entonces un contacto cercano no fuerza el compromiso,
+            porque hold_off ya esta retrocediendo. Con 0.5 s de margen se forzaba antes de
+            que el dron invirtiera la marcha, casi siempre recien hecho el traspaso y con la
+            velocidad aun mal estimada (validacion 2: 6 de 20 forzados, uno con el
+            checkpoint quieto).
         :return: True solo en el paso en que se compromete.
         """
         if self.committed:
             return False
         prm = self._prm
         self._observe_time += dt
-        self._short_time = self._short_time + dt if contact_time < prm.terminal_time else 0.0
+        short = contact_time < prm.terminal_time and not can_hold
+        self._short_time = self._short_time + dt if short else 0.0
         if size_rel_sigma < prm.sigma_rel_commit:
             self.reason = 'escala conocida'
         elif self._short_time >= prm.forced_commit_hold:
@@ -420,7 +474,8 @@ def level_velocity(r: np.ndarray, v_t: np.ndarray, prm: GuidanceParams) -> float
 
 def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarray,
                    size_rel_sigma: float, angular_range: float, tau: float, dt: float,
-                   prm: GuidanceParams) -> Tuple[np.ndarray, float, float]:
+                   prm: GuidanceParams,
+                   cov: Optional[np.ndarray] = None) -> Tuple[np.ndarray, float, float]:
     """
     Velocidad de mando observando o atacando, segun decida la puerta de compromiso.
 
@@ -434,12 +489,16 @@ def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.n
     :param v_own: Velocidad del interceptor [m/s] (NED).
     :param angular_range: Distancia al checkpoint en tamanos de checkpoint (sin escala).
     :param dt: Tiempo desde la llamada anterior [s], para la puerta.
+    :param cov: Covarianza 6x6 de la posicion y la velocidad estimadas del checkpoint,
+        para la cota alta del tiempo hasta el contacto (None: sin incertidumbre).
     :return: (velocidad de mando, tiempo hasta el paso (atacando) o hasta el contacto
         (observando), excitacion).
     """
     v_rel = v_t - v_own
     t_contact = time_to_contact(r, v_rel)
-    gate.update(size_rel_sigma, t_contact, dt)
+    t_contact_high = t_contact + contact_time_sigma(r, v_rel, cov)
+    gate.update(size_rel_sigma, t_contact_high, dt,
+                can_hold_distance(r, v_t, size_rel_sigma, t_contact_high, prm))
     if not gate.committed:
         if prm.excitation_mode == 'radial':
             # La retencion va antes de sumar la oscilacion: si no, recortaria su mitad de

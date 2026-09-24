@@ -3,8 +3,9 @@
 import math
 
 from interceptor.bearing_angle_filter import BearingAngleFilter, FilterParams
-from interceptor.guidance import approach_speed, base_speed, cruise_speed, excitation_gain
-from interceptor.guidance import CommitGate, gated_velocity, GuidanceParams, hold_off
+from interceptor.guidance import approach_speed, base_speed, can_hold_distance
+from interceptor.guidance import CommitGate, contact_time_sigma, cruise_speed, excitation_gain
+from interceptor.guidance import gated_velocity, GuidanceParams, hold_off
 from interceptor.guidance import guidance_velocity, level_velocity
 from interceptor.guidance import intercept_time, should_freeze, time_to_closest_approach
 from interceptor.guidance import time_to_contact
@@ -305,6 +306,52 @@ def test_commit_gate_forces_when_it_cannot_keep_the_distance():
     assert not gate.update(0.5, short, prm.forced_commit_hold / 2)
     assert gate.update(0.5, short, prm.forced_commit_hold / 2 + 0.01)
     assert gate.forced
+
+
+def test_commit_gate_does_not_force_while_it_can_back_off():
+    """Si retrocediendo aun puede mantener la distancia, un contacto cercano no fuerza."""
+    prm = GuidanceParams()
+    gate = CommitGate(prm)
+    short = prm.terminal_time - 1.0
+    for _ in range(20):
+        assert not gate.update(0.5, short, prm.forced_commit_hold, can_hold=True)
+    assert gate.update(0.5, short, prm.forced_commit_hold + 0.01, can_hold=False)
+    assert gate.forced
+
+
+def test_can_hold_distance_needs_a_slower_target_and_time_to_reverse():
+    """Retroceder vale si el checkpoint se acerca mas despacio que speed y queda tiempo."""
+    prm = GuidanceParams()
+    r = np.array([6.0, 0.0, 0.0])
+    slow = np.array([-2.0, 0.0, 0.0])
+    fast = np.array([-2.0 * prm.speed, 0.0, 0.0])
+    assert can_hold_distance(r, slow, 0.0, 3.0, prm)
+    assert not can_hold_distance(r, fast, 0.0, 3.0, prm)
+    assert not can_hold_distance(r, slow, 0.0, 0.9 * prm.reverse_time, prm)
+    # Con la escala sin conocer se toma la cota baja de la velocidad estimada.
+    assert can_hold_distance(r, fast, 0.6, 3.0, prm)
+    assert prm.reverse_time == pytest.approx(2.0 * prm.speed / prm.max_accel)
+
+
+def test_contact_time_sigma_matches_numerical_propagation():
+    """La sigma del tiempo hasta el contacto coincide con el gradiente numerico."""
+    rng = np.random.default_rng(3)
+    r = np.array([5.0, 2.0, -1.0])
+    v_rel = np.array([-2.0, -0.3, 0.2])
+    a = rng.normal(size=(6, 6))
+    cov = 0.05 * a @ a.T
+    eps = 1e-6
+    x0 = np.concatenate((r, v_rel))
+    grad = np.zeros(6)
+    for i in range(6):
+        dx = np.zeros(6)
+        dx[i] = eps
+        hi, lo = x0 + dx, x0 - dx
+        grad[i] = (time_to_contact(hi[:3], hi[3:]) - time_to_contact(lo[:3], lo[3:])) / (2 * eps)
+    expected = math.sqrt(grad @ cov @ grad)
+    assert contact_time_sigma(r, v_rel, cov) == pytest.approx(expected, rel=1e-4)
+    assert contact_time_sigma(r, v_rel, None) == 0.0
+    assert contact_time_sigma(r, -v_rel, cov) == 0.0        # se abre: sin contacto
 
 
 def test_commit_gate_forces_after_max_observe_time():

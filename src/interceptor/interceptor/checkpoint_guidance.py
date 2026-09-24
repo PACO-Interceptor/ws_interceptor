@@ -172,7 +172,8 @@ class CheckpointGuidance(Px4OffboardNode):
         committed = self._gate.committed
         v_cmd, t_go, gain = gated_velocity(self._gate, r, v_t, np.array(self.velocity),
                                            rel_sigma, e.angular_range, elapsed,
-                                           elapsed - self._gate_elapsed, self._prm)
+                                           elapsed - self._gate_elapsed, self._prm,
+                                           self._position_velocity_covariance(e))
         self._gate_elapsed = elapsed
         if self._gate.committed and not committed:
             self._committed_pub.publish(Bool(data=True))
@@ -199,6 +200,14 @@ class CheckpointGuidance(Px4OffboardNode):
         else:
             self._log_status(now, 'ataca', t_go, r, e.size, rel_sigma, gain)
         return [NAN] * 3, self._limit_altitude(v_cmd)
+
+    @staticmethod
+    def _position_velocity_covariance(e) -> np.ndarray:
+        """Covarianza 6x6 de posicion y velocidad de la estimacion, pasada de ENU a NED."""
+        cov = np.array(e.covariance, dtype=float).reshape(7, 7)[:6, :6]
+        swap = np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]])
+        t = np.kron(np.eye(2), swap)
+        return t @ cov @ t.T
 
     def _log_status(self, now, mode, t_go, r, size, rel_sigma, gain) -> None:
         """Una linea por segundo con el modo, el tiempo que queda y la estimacion."""

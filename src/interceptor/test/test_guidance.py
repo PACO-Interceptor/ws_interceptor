@@ -5,7 +5,7 @@ import math
 from interceptor.bearing_angle_filter import BearingAngleFilter, FilterParams
 from interceptor.guidance import approach_speed, cruise_speed, excitation_gain
 from interceptor.guidance import CommitGate, gated_velocity, GuidanceParams, hold_off
-from interceptor.guidance import guidance_velocity
+from interceptor.guidance import guidance_velocity, level_velocity
 from interceptor.guidance import intercept_time, should_freeze, time_to_closest_approach
 from interceptor.guidance import time_to_contact
 import numpy as np
@@ -342,6 +342,35 @@ def fly_gated(seed, v_t, p_t, size=0.3, prior=1.0, rate=11.0, duration=40.0):
         p_i = p_i + v_i * dt
         p_t = p_t + v_t * dt
     return min_dist, gate
+
+
+def test_level_velocity_climbs_toward_a_checkpoint_above():
+    """
+    Con el checkpoint por encima sube, por debajo baja, y a 10 grados ya va al maximo.
+
+    No depende del tamano estimado: r escalado da la misma orden.
+    """
+    prm = GuidanceParams()
+    above = np.array([10.0, 0.0, -2.5])                  # NED: z negativo = mas alto
+    vz = level_velocity(above, np.zeros(3), prm)
+    assert vz == pytest.approx(-prm.max_vertical_speed)
+    below = np.array([10.0, 0.0, 2.5])
+    assert level_velocity(below, np.zeros(3), prm) == pytest.approx(prm.max_vertical_speed)
+    small = np.array([10.0, 0.0, -10.0 * math.tan(math.radians(5.0))])
+    assert level_velocity(small, np.zeros(3), prm) == pytest.approx(
+        -prm.max_vertical_speed * 0.5, rel=1e-3)
+    assert level_velocity(3.0 * small, np.zeros(3), prm) == pytest.approx(
+        level_velocity(small, np.zeros(3), prm))
+    assert level_velocity(np.array([10.0, 0.0, 0.0]), np.zeros(3), prm) == 0.0
+
+
+def test_observing_uses_the_level_velocity():
+    """Al observar, la componente vertical de la orden es la de level_velocity."""
+    prm = GuidanceParams()
+    r = np.array([12.0, 3.0, -2.0])
+    v_cmd, _, _ = gated_velocity(CommitGate(prm), r, np.zeros(3), np.zeros(3), 0.7, 40.0, 0.3,
+                                 0.1, prm)
+    assert v_cmd[2] == pytest.approx(level_velocity(r, np.zeros(3), prm))
 
 
 def test_radial_excitation_moves_along_the_line_of_sight():

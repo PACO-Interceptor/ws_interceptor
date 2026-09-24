@@ -77,6 +77,12 @@ class GuidanceParams:
     terminal_time: float = 4.0
     # Limite de velocidad vertical [m/s].
     max_vertical_speed: float = 1.5
+    # Al observar, angulo de elevacion del checkpoint [rad] al que se sube o baja ya a
+    # max_vertical_speed: 10 grados, una cuarta parte del semicampo vertical de la camara
+    # (+-42 grados con 1280x960 y 1.74 rad de campo horizontal), para que no se salga de la
+    # imagen con el cabeceo al acelerar. El piloto no dejara el dron a la altura exacta del
+    # checkpoint: con 2.5 m de desnivel se salia del campo vertical a menos de 4 m.
+    level_full_elevation: float = math.radians(10.0)
     # Congelar el rumbo exige ademas ver el checkpoint grande: distancia menor que
     # freeze_max_angular_range tamanos de checkpoint (sin escala). Evita congelar lejos
     # cuando la velocidad estimada aun es ruido (recien reiniciado el estimador).
@@ -357,13 +363,29 @@ class CommitGate:
         return True
 
 
+def level_velocity(r: np.ndarray, v_t: np.ndarray, prm: GuidanceParams) -> float:
+    """
+    Velocidad vertical (NED) para dejar el checkpoint a la altura de la camara al observar.
+
+    Proporcional al angulo de elevacion del bearing, que no depende del tamano estimado,
+    mas la velocidad vertical estimada del checkpoint; acotada por max_vertical_speed.
+    """
+    dist = float(np.linalg.norm(r))
+    if dist < 1e-6:
+        return 0.0
+    elevation = math.asin(max(-1.0, min(1.0, -float(r[2]) / dist)))    # NED: arriba > 0
+    vz = float(v_t[2]) - prm.max_vertical_speed * elevation / prm.level_full_elevation
+    return min(max(vz, -prm.max_vertical_speed), prm.max_vertical_speed)
+
+
 def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarray,
                    size_rel_sigma: float, angular_range: float, tau: float, dt: float,
                    prm: GuidanceParams) -> Tuple[np.ndarray, float, float]:
     """
     Velocidad de mando observando o atacando, segun decida la puerta de compromiso.
 
-    OBSERVA: excitacion segun la sigma y cierre limitado por hold_off. El tiempo que
+    OBSERVA: excitacion segun la sigma, cierre limitado por hold_off y altura segun
+    level_velocity (checkpoint a la altura de la camara). El tiempo que
     apaga la excitacion es el de contacto: el de maxima aproximacion llega a cero cuando
     el checkpoint pasa de largo a distancia, y apagaba la excitacion justo al observar.
     ATACA: guiado de siempre sin excitacion (el ataque es corto y en el lazo sintetico la
@@ -390,11 +412,11 @@ def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.n
             if gain > 0.0 and dist > 1e-6:
                 osc = math.sin(2.0 * math.pi * prm.excitation_freq * tau)
                 v_cmd = v_cmd + gain * prm.excitation_amp * osc * r / dist
-                v_cmd[2] = min(max(v_cmd[2], -prm.max_vertical_speed), prm.max_vertical_speed)
-            return v_cmd, t_contact, gain
-        v_cmd, _, gain = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_contact)
-        return (hold_off(v_cmd, r, v_t, v_own, angular_range, prm, size_rel_sigma),
-                t_contact, gain)
+        else:
+            v_cmd, _, gain = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_contact)
+            v_cmd = hold_off(v_cmd, r, v_t, v_own, angular_range, prm, size_rel_sigma)
+        v_cmd[2] = level_velocity(r, v_t, prm)
+        return v_cmd, t_contact, gain
     t_pass = time_to_closest_approach(r, v_rel)
     v_cmd, _, gain = guidance_velocity(r, v_t, size_rel_sigma, tau, prm, t_pass,
                                        excite=False)

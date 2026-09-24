@@ -4,7 +4,8 @@ import math
 
 from interceptor.bearing_angle_filter import BearingAngleFilter, FilterParams
 from interceptor.guidance import approach_speed, base_speed, can_hold_distance
-from interceptor.guidance import CommitGate, contact_time_sigma, cruise_speed, excitation_gain
+from interceptor.guidance import CommitGate, contact_rate, contact_time_bounds, cruise_speed
+from interceptor.guidance import excitation_gain
 from interceptor.guidance import gated_velocity, GuidanceParams, hold_off
 from interceptor.guidance import guidance_velocity, level_velocity
 from interceptor.guidance import intercept_time, should_freeze, time_to_closest_approach
@@ -269,6 +270,16 @@ def test_hold_off_backs_away_when_contact_is_too_close():
     assert out[0] >= -prm.speed
 
 
+def test_hold_off_retreats_at_full_speed_inside_terminal_time():
+    """Con el contacto antes de terminal_time retrocede a la velocidad de crucero."""
+    prm = GuidanceParams()
+    r, v_t, v_own = np.array([5.0, 0.0, 0.0]), np.array([-2.0, 0.0, 0.0]), np.zeros(3)
+    assert time_to_contact(r, v_t - v_own) < prm.terminal_time
+    out = hold_off(np.array([3.0, 1.0, 0.0]), r, v_t, v_own, 20.0, prm)
+    assert out[0] == pytest.approx(-prm.speed)
+    assert out[1] == pytest.approx(1.0)
+
+
 def test_hold_off_equilibrium_does_not_depend_on_scale():
     """
     La retencion solo usa el tiempo hasta el contacto y la velocidad propia.
@@ -333,25 +344,38 @@ def test_can_hold_distance_needs_a_slower_target_and_time_to_reverse():
     assert prm.reverse_time == pytest.approx(2.0 * prm.speed / prm.max_accel)
 
 
-def test_contact_time_sigma_matches_numerical_propagation():
-    """La sigma del tiempo hasta el contacto coincide con el gradiente numerico."""
+def test_contact_rate_sigma_matches_numerical_propagation():
+    """La sigma de 1/tau coincide con el gradiente numerico y no depende de la escala."""
     rng = np.random.default_rng(3)
     r = np.array([5.0, 2.0, -1.0])
     v_rel = np.array([-2.0, -0.3, 0.2])
     a = rng.normal(size=(6, 6))
     cov = 0.05 * a @ a.T
+
+    def rate(x):
+        return -float(x[:3] @ x[3:]) / float(x[:3] @ x[:3])
+
     eps = 1e-6
     x0 = np.concatenate((r, v_rel))
-    grad = np.zeros(6)
-    for i in range(6):
-        dx = np.zeros(6)
-        dx[i] = eps
-        hi, lo = x0 + dx, x0 - dx
-        grad[i] = (time_to_contact(hi[:3], hi[3:]) - time_to_contact(lo[:3], lo[3:])) / (2 * eps)
-    expected = math.sqrt(grad @ cov @ grad)
-    assert contact_time_sigma(r, v_rel, cov) == pytest.approx(expected, rel=1e-4)
-    assert contact_time_sigma(r, v_rel, None) == 0.0
-    assert contact_time_sigma(r, -v_rel, cov) == 0.0        # se abre: sin contacto
+    grad = np.array([(rate(x0 + eps * e) - rate(x0 - eps * e)) / (2 * eps) for e in np.eye(6)])
+    k, sigma = contact_rate(r, v_rel, cov)
+    assert k == pytest.approx(1.0 / time_to_contact(r, v_rel))
+    assert sigma == pytest.approx(math.sqrt(grad @ cov @ grad), rel=1e-4)
+    assert contact_rate(r, v_rel)[1] == 0.0
+    # Incertidumbre solo de escala (r y v_rel juntos): no cuenta.
+    x0 = x0.reshape(6, 1)
+    assert contact_rate(r, v_rel, 0.3 * x0 @ x0.T)[1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_contact_time_bounds_bracket_the_estimate():
+    """Las cotas del tiempo hasta el contacto rodean al valor central."""
+    r, v_rel = np.array([6.0, 0.0, 0.0]), np.array([-2.0, 0.0, 0.0])
+    cov = np.diag([0.0, 0.0, 0.0, 0.25, 0.0, 0.0])                     # sigma 0.5 m/s
+    low, high = contact_time_bounds(r, v_rel, cov)
+    assert low == pytest.approx(6.0 / 2.5)
+    assert high == pytest.approx(6.0 / 1.5)
+    big = np.diag([0.0, 0.0, 0.0, 9.0, 0.0, 0.0])                       # puede abrirse
+    assert contact_time_bounds(r, v_rel, big)[1] == math.inf
 
 
 def test_commit_gate_forces_after_max_observe_time():

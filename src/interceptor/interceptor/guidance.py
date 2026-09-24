@@ -307,22 +307,36 @@ def time_to_contact(r: np.ndarray, v_rel: np.ndarray) -> float:
     return dist / closing if closing > 1e-6 else math.inf
 
 
-def contact_time_sigma(r: np.ndarray, v_rel: np.ndarray,
-                       cov: Optional[np.ndarray]) -> float:
+def contact_rate(r: np.ndarray, v_rel: np.ndarray,
+                 cov: Optional[np.ndarray] = None) -> Tuple[float, float]:
     """
-    Desviacion tipica del tiempo hasta el contacto, por propagacion lineal.
+    Inversa del tiempo hasta el contacto, k = -r.v_rel / |r|^2 [1/s], y su sigma.
 
-    tau = |r|^2 / c con c = -r.v_rel; cov es la covarianza 6x6 de la posicion y la
-    velocidad del checkpoint (la propia del dron se da por exacta). 0 si no hay
-    covarianza o no se cierra distancia.
+    k > 0 si se cierra distancia (tau = 1/k), <= 0 si se abre; es continua donde tau salta
+    a infinito. La sigma sale por propagacion lineal de cov, la covarianza 6x6 de la
+    posicion y la velocidad del checkpoint (la propia del dron se da por exacta); 0 sin cov.
+    Como k no cambia al escalar r y v_rel juntos, la parte de la sigma que solo es
+    incertidumbre del tamano se cancela: la sigma de la velocidad de cierre en metros no
+    sirve (con el tamano al 70 % el dron se creia siempre a punto de chocar y retrocedia sin
+    parar: lazo sintetico, cruce a 2 m/s de 10/10 a 4/10).
     """
-    closing = -float(r @ v_rel)
-    if cov is None or closing <= 1e-9:
-        return 0.0
     dist2 = float(r @ r)
-    grad = np.concatenate((2.0 * r / closing + dist2 * v_rel / closing ** 2,
-                           dist2 * r / closing ** 2))
-    return math.sqrt(max(float(grad @ cov @ grad), 0.0))
+    if dist2 < 1e-12:
+        return 0.0, 0.0
+    k = -float(r @ v_rel) / dist2
+    if cov is None:
+        return k, 0.0
+    grad = np.concatenate((-v_rel / dist2 - 2.0 * k * r / dist2, -r / dist2))
+    return k, math.sqrt(max(float(grad @ cov @ grad), 0.0))
+
+
+def contact_time_bounds(r: np.ndarray, v_rel: np.ndarray,
+                        cov: Optional[np.ndarray] = None) -> Tuple[float, float]:
+    """Cotas baja y alta del tiempo hasta el contacto: 1/(k + sigma) y 1/(k - sigma)."""
+    k, sigma = contact_rate(r, v_rel, cov)
+    low = 1.0 / (k + sigma) if k + sigma > 1e-9 else math.inf
+    high = 1.0 / (k - sigma) if k - sigma > 1e-9 else math.inf
+    return low, high
 
 
 def can_hold_distance(r: np.ndarray, v_t: np.ndarray, size_rel_sigma: float,
@@ -363,6 +377,15 @@ def hold_off(v_cmd: np.ndarray, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarra
     = standoff_time aunque el tamano este mal estimado. Un limite calculado con r y v_t
     estimados (u.v_t + |r|/standoff_time) no lo cumple: con el tamano 3 veces
     sobreestimado dejaba cerrar a menos de 4 s en el lazo sintetico.
+
+    Si el tiempo hasta el contacto queda por debajo de terminal_time, retrocede a tope
+    (-crucero): la realimentacion suave dejaba al checkpoint acercarse a 2 m/s mientras el
+    dron solo llegaba a retroceder a 1.8 m/s (Gazebo, S1v20). Aqui no se usa la
+    incertidumbre de la velocidad: recien hecho el traspaso es tan grande que, con la cota
+    baja del tiempo hasta el contacto (en la realimentacion o para retroceder a tope), el
+    dron huia y perdia el checkpoint, y exigiendo que la distancia se abra con seguridad
+    para seguirlo se escapaba el que se aleja (lazo sintetico: cruce a 2 m/s de 10/10 a
+    4-5/10; alejandose a 4 m/s de 8/10 a 5/10).
     """
     dist = float(np.linalg.norm(r))
     if dist < 1e-6:
@@ -373,6 +396,9 @@ def hold_off(v_cmd: np.ndarray, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarra
     tau = time_to_contact(r, v_t - v_own)
     if math.isfinite(tau):
         upper = min(upper, own + prm.standoff_gain * (tau - prm.standoff_time))
+    retreat = -cruise_speed(r, v_t, size_rel_sigma, prm)
+    if tau < prm.terminal_time:
+        upper = min(upper, retreat)
     # Suelo de distancia con un checkpoint lento (ataque por debajo de speed): el ataque
     # necesita terminal_time a esa velocidad; si el checkpoint esta mas cerca, retroceder
     # aunque no venga hacia el dron (uno lento que cruza no baja el tiempo hasta el
@@ -386,18 +412,18 @@ def hold_off(v_cmd: np.ndarray, r: np.ndarray, v_t: np.ndarray, v_own: np.ndarra
         floor = min(floor, dist * prm.observe_max_angular_range / angular_range)
     if dist < floor:
         upper = min(upper, own + prm.standoff_gain * (dist - floor) / base)
-    upper = max(upper, -cruise_speed(r, v_t, size_rel_sigma, prm))
+    upper = max(upper, retreat)
     # Si la distancia se abre, no dejarlo escapar: al observar sin la escala, el crucero no
     # sube (cota baja de la velocidad) y un checkpoint que se aleja salia del alcance del
     # detector. Tambien se realimenta sobre la velocidad propia: el equilibrio (no se abre
     # distancia) no depende de la escala. Manda sobre el limite superior.
     opening = float(u @ (v_t - v_own))
     lower = own + prm.standoff_gain * opening if opening > 0.0 else -math.inf
-    closing = float(u @ v_cmd)
-    target = min(max(closing, lower), max(upper, lower))
-    if target == closing:
+    cmd_closing = float(u @ v_cmd)
+    target = min(max(cmd_closing, lower), max(upper, lower))
+    if target == cmd_closing:
         return v_cmd
-    out = v_cmd + (target - closing) * u
+    out = v_cmd + (target - cmd_closing) * u
     norm = float(np.linalg.norm(out))
     if norm > prm.max_speed:
         out *= prm.max_speed / norm
@@ -444,7 +470,11 @@ class CommitGate:
         self._observe_time += dt
         short = contact_time < prm.terminal_time and not can_hold
         self._short_time = self._short_time + dt if short else 0.0
-        if size_rel_sigma < prm.sigma_rel_commit:
+        # Con la escala ya conocida pero sin terminal_time por delante, si retrocediendo se
+        # puede recuperar tiempo, se espera: comprometerse asi dejaba ~1 s de ataque (S1v20,
+        # 0.32 m).
+        no_time = contact_time < prm.terminal_time and can_hold
+        if size_rel_sigma < prm.sigma_rel_commit and not no_time:
             self.reason = 'escala conocida'
         elif self._short_time >= prm.forced_commit_hold:
             self.forced, self.reason = True, 'no se puede mantener la distancia'
@@ -496,7 +526,7 @@ def gated_velocity(gate: CommitGate, r: np.ndarray, v_t: np.ndarray, v_own: np.n
     """
     v_rel = v_t - v_own
     t_contact = time_to_contact(r, v_rel)
-    t_contact_high = t_contact + contact_time_sigma(r, v_rel, cov)
+    t_contact_high = contact_time_bounds(r, v_rel, cov)[1]
     gate.update(size_rel_sigma, t_contact_high, dt,
                 can_hold_distance(r, v_t, size_rel_sigma, t_contact_high, prm))
     if not gate.committed:

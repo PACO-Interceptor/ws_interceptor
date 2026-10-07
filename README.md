@@ -110,3 +110,12 @@ El script convierte los enlaces al formato de la wiki (páginas sin extensión y
 con su nombre en español, rutas al código como URLs absolutas) y sube el
 resultado. Al añadir una página nueva en `docs/wiki/`, hay que darle nombre en
 el diccionario `PAGINAS` de ese script.
+
+## Licencia
+
+El paquete propio `interceptor` y el resto del código de este repositorio se
+distribuyen bajo la licencia [Apache-2.0](LICENSE).
+
+Las dependencias de PX4 incluidas en `src/` (`px4_msgs`, `px4_ros_com` y
+`px4-ros2-interface-lib`) conservan su licencia original, BSD-3-Clause, que
+está en el `LICENSE` de cada una.

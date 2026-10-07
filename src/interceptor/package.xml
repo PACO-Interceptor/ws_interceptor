@@ -4,8 +4,9 @@
   <name>interceptor</name>
   <version>0.1.1</version>
   <description>ROS2 package for target tracking and interception.</description>
-  <maintainer email="davidelbahri@gmail.com">deireb</maintainer>
+  <maintainer email="66845160+Deireb@users.noreply.github.com">Deireb</maintainer>
   <license>Apache-2.0</license>
+  <url type="website">https://github.com/Deireb</url>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   summary:
+    # Only run for issues opened by the team (owner, org members or collaborators).
+    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
     steps:
       - name: Run AI inference

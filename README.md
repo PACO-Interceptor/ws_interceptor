@@ -15,7 +15,7 @@ Workspace ROS 2 para el seguimiento e interceptación de un vehículo usando dat
 ## Obtener el workspace
 
 ```bash
-git clone https://github.com/Deireb/ws_interceptor.git
+git clone https://github.com/PACO-Interceptor/ws_interceptor.git
 cd ws_interceptor
 ```
 
@@ -98,7 +98,7 @@ Los directorios `build/`, `install/` y `log/` se generan localmente y no forman 
 
 La [wiki introductoria local](docs/wiki/Home.md) explica paso a paso cómo
 preparar el workspace, ejecutar la simulación y entender el papel de cada nodo.
-Es la única fuente: la [wiki de GitHub](https://github.com/Deireb/ws_interceptor/wiki)
+Es la única fuente: la [wiki de GitHub](https://github.com/PACO-Interceptor/ws_interceptor/wiki)
 se genera a partir de ella y no se edita a mano.
 
 ```bash

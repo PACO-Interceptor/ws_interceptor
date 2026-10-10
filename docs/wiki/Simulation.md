@@ -1,211 +1,210 @@
-# Ejecución de la simulación
+# Running the simulation
 
-Esta página describe cómo poner varias piezas a funcionar al mismo tiempo.
-Cuando se dice “otra terminal”, se trata de otra ventana de comandos; cada una
-mantiene su propio proceso activo.
+This page describes how to get several pieces running at the same time. When
+it says "another terminal", it means another command window; each one keeps
+its own process running.
 
-El launch del proyecto conecta ROS 2 con dos instancias PX4 SITL. PX4 SITL
-simula el autopiloto y el vehículo; el Micro XRCE-DDS Agent hace de puente
-entre PX4 y ROS 2.
+The project's launch file connects ROS 2 to two PX4 SITL instances. PX4 SITL
+simulates the autopilot and the vehicle; the Micro XRCE-DDS Agent is the
+bridge between PX4 and ROS 2.
 
-## Antes de empezar
+## Before you start
 
-Esta página da por hecho que ya has seguido
-[Instalación y compilación](Installation-and-build.md) y que tienes:
+This page assumes you have already followed
+[Installation and build](Installation-and-build.md) and that you have:
 
-- el workspace **compilado** (`colcon build --symlink-install` sin errores);
-- **PX4** clonado en `~/PX4-Autopilot`, fijado en el commit que indica esa
-  página y compilado al menos una vez (si lo clonaste en otro sitio, cambia esa
-  ruta en los comandos de los pasos 1 y 2);
-- el **Micro XRCE-DDS Agent** compilado en `~/Micro-XRCE-DDS-Agent`;
-- **QGroundControl v5.1.4** descargado.
+- the workspace **built** (`colcon build --symlink-install` without errors);
+- **PX4** cloned in `~/PX4-Autopilot`, pinned to the commit given on that
+  page and built at least once (if you cloned it somewhere else, change that
+  path in the commands of steps 1 and 2);
+- the **Micro XRCE-DDS Agent** built in `~/Micro-XRCE-DDS-Agent`;
+- **QGroundControl v5.1.4** downloaded.
 
-Necesitarás cuatro terminales: una por cada pieza que se queda ejecutándose,
-más alguna suelta para comprobar cosas.
+You'll need four terminals: one for each piece that keeps running, plus a
+spare one for checking things.
 
-<a id="cargar-el-entorno"></a>
-**Cargar el entorno.** Cada terminal nueva empieza sin saber nada de ROS 2 ni
-de este workspace, y lo que se carga en una no vale para las demás. Antes de
-usar cualquier comando `ros2`, en esa terminal:
+<a id="load-the-environment"></a>
+**Load the environment.** Every new terminal starts knowing nothing about ROS 2
+or this workspace, and what you load in one doesn't carry over to the others.
+Before using any `ros2` command, in that terminal:
 
 ```bash
-cd ~/ws_interceptor          # la ruta donde clonaste el workspace
+cd ~/ws_interceptor  # wherever you cloned the workspace
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ```
 
-La primera línea carga ROS 2 y la segunda, este workspace (por eso hay que
-estar dentro de su carpeta: `install/setup.bash` es una ruta relativa). Las
-terminales de PX4 no lo necesitan: PX4 no es un programa de ROS 2.
+The first line loads ROS 2 and the second, this workspace (that's why you have
+to be inside its folder: `install/setup.bash` is a relative path). The PX4
+terminals don't need it: PX4 is not a ROS 2 program.
 
-## Resumen rápido
+## Quick summary
 
-Los comandos, en orden, para tenerlo todo en marcha. Cada bloque va en su
-propia terminal y se explica en detalle más abajo.
+The commands, in order, to get everything running. Each block goes in its own
+terminal and is explained in detail below.
 
 ```bash
-# 1. Interceptor (instancia 0). Abre también la ventana de Gazebo
+# 1. Interceptor (instance 0). Also opens the Gazebo window
 cd ~/PX4-Autopilot
 make px4_sitl gz_x500
 
-# 2. Target (instancia 1), 20 m al norte
+# 2. Target (instance 1), 20 m to the north
 cd ~/PX4-Autopilot
 GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_default/bin/px4 -i 1
 
-# 3. Nodos del proyecto, con el modo de guiado elegido
-cd ~/ws_interceptor          # la ruta donde clonaste el workspace
+# 3. Project nodes, with the chosen guidance mode
+cd ~/ws_interceptor  # wherever you cloned the workspace
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 launch interceptor interceptor.launch.py mode:=pn
 
-# 4. Estación de tierra
+# 4. Ground station
 ~/QGroundControl-x86_64.AppImage
 ```
 
-Después, desde QGroundControl: despega los dos drones, manda el target a otro
-punto y elige **PN mode** en el interceptor (ver [Volar](#volar)).
+Then, from QGroundControl: take off both drones, send the target somewhere
+else and select **PN mode** on the interceptor (see [Fly](#fly)).
 
-## Qué se está simulando
+## What is being simulated
 
-SITL no es solo una ventana con un modelo 3D. Ejecuta el software de PX4 y sus
-estimadores como procesos normales, de forma que ROS 2 recibe mensajes muy
-parecidos a los de un vehículo real. Esto permite probar la integración sin
-arriesgar hardware, aunque no reproduce todas las condiciones físicas.
+SITL is not just a window with a 3D model. It runs the PX4 software and its
+estimators as normal processes, so ROS 2 receives messages very similar to
+those of a real vehicle. This lets you test the integration without risking
+hardware, although it doesn't reproduce every physical condition.
 
-Las instancias deben tener identidades diferentes:
+The instances must have different identities:
 
-- índice `0`: interceptor, tópicos sin `/px4_1/`;
-- índice `1`: target, tópicos con `/px4_1/`.
+- index `0`: interceptor, topics without `/px4_1/`;
+- index `1`: target, topics with `/px4_1/`.
 
-`/px4_1/` es un prefijo que PX4 añade automáticamente a los tópicos de una
-instancia arrancada con `-i` mayor que 0 (aquí, `-i 1`), para distinguirlos
-de los de la instancia `0`, que no lleva prefijo. Aquí hace falta porque
-interceptor y target son dos PX4 corriendo a la vez en el mismo ordenador:
-sin el prefijo, ambos publicarían en los mismos nombres de tópico y no habría
-forma de saber de qué vehículo viene cada mensaje. Por eso el índice no es un
-nombre visual, sino parte real del direccionamiento: si se intercambian los
-índices al arrancar, el código sigue compilando igual, pero cada nodo termina
-consumiendo los datos del vehículo equivocado.
+`/px4_1/` is a prefix PX4 adds automatically to the topics of an instance
+started with `-i` greater than 0 (here, `-i 1`), to tell them apart from those
+of instance `0`, which has no prefix. It's needed here because interceptor and
+target are two PX4s running at the same time on the same computer: without
+the prefix, both would publish on the same topic names and there'd be no way
+of telling which vehicle each message comes from. So the index is not a
+display name but a real part of the addressing: if the indices are swapped at
+start-up, the code still builds the same, but each node ends up consuming the
+wrong vehicle's data.
 
-## Orden recomendado
+## Recommended order
 
-Abre terminales separadas y carga ROS 2 y el workspace cuando corresponda.
+Open separate terminals and load ROS 2 and the workspace where needed.
 
 ```mermaid
 %%{init: {"theme": "dark"}}%%
 sequenceDiagram
     participant T1 as Terminal 1 (PX4 interceptor)
     participant T2 as Terminal 2 (PX4 target)
-    participant T3 as Terminal 3 (launch del proyecto)
+    participant T3 as Terminal 3 (project launch)
 
-    T1->>T1: make px4_sitl gz_x500 (instancia 0)
-    Note over T1: esperar a que termine el arranque
-    T2->>T2: GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" ... px4 -i 1 (instancia 1)
-    Note over T2: esperar a que termine el arranque
+    T1->>T1: make px4_sitl gz_x500 (instance 0)
+    Note over T1: wait until start-up finishes
+    T2->>T2: GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" ... px4 -i 1 (instance 1)
+    Note over T2: wait until start-up finishes
     T3->>T3: ros2 launch interceptor interceptor.launch.py mode:=pn
-    T3->>T3: arranca Micro XRCE-DDS Agent (udp4, puerto 8888)
-    T3->>T3: arranca conversores tf2, diagnóstico y el modo de vuelo elegido
-    T1-->>T3: VehicleOdometry (instancia 0)
-    T2-->>T3: VehicleOdometry (instancia 1)
+    T3->>T3: starts Micro XRCE-DDS Agent (udp4, port 8888)
+    T3->>T3: starts tf2 converters, diagnostics and the chosen flight mode
+    T1-->>T3: VehicleOdometry (instance 0)
+    T2-->>T3: VehicleOdometry (instance 1)
 ```
 
-El orden importa: si el launch arranca antes que las dos instancias PX4, sus
-nodos simplemente no reciben odometría todavía y esperan; si el agente DDS no
-está corriendo, ninguna de las dos instancias PX4 llega a ROS 2 aunque estén
-"arrancadas".
+Order matters: if the launch starts before the two PX4 instances, its nodes
+simply don't receive odometry yet and wait; if the DDS agent isn't running,
+neither PX4 instance reaches ROS 2 even though they're "up".
 
-### 1. Iniciar PX4 del interceptor
+### 1. Start the interceptor's PX4
 
-En el directorio de PX4:
+In the PX4 folder:
 
 ```bash
 cd ~/PX4-Autopilot
 make px4_sitl gz_x500
 ```
 
-Esta es la instancia `0` (el interceptor, ver arriba).
+This is instance `0` (the interceptor, see above).
 
-Espera a que PX4 termine su arranque antes de continuar. En una prueba real
-conviene confirmar que el proceso está estable y que el vehículo aparece en la
-herramienta de simulación.
+Wait for PX4 to finish starting before you carry on. In a real test it's worth
+checking that the process is stable and that the vehicle shows up in the
+simulator.
 
-### 2. Iniciar PX4 del target
+### 2. Start the target's PX4
 
-En otra terminal:
+In another terminal:
 
 ```bash
 cd ~/PX4-Autopilot
 GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_default/bin/px4 -i 1
 ```
 
-Esta es la instancia `1` (el target, ver arriba). Aquí no se usa `make`: el
-simulador ya lo arrancó la instancia `0`, así que se ejecuta directamente el
-binario de PX4 que compiló el paso anterior. Cada parte de la orden importa:
+This is instance `1` (the target, see above). `make` isn't used here: the
+simulator was already started by instance `0`, so the PX4 binary built in the
+previous step is run directly. Every part of the command matters:
 
-- `./build/...`: la ruta es relativa a `~/PX4-Autopilot` (empieza por `./`). Con
-  `/build/...` el sistema la buscaría desde la raíz del disco y no la encontraría.
-- `GZ_IP=127.0.0.1`: dirección por la que PX4 habla con Gazebo. `make` la fija
-  sola para la instancia `0`; si la instancia `1` no usa la misma, Gazebo crea
-  el dron pero PX4 no recibe sus sensores (`Accel Sensor 0 missing`,
-  `ekf2 missing data`) y no publica odometría.
-- `PX4_GZ_MODEL_POSE="0,20"`: posición inicial del target en Gazebo, en metros
-  (`x,y`): aquí, 20 m al norte del interceptor. Sin ella, el target aparece en
-  el mismo punto que el interceptor, uno dentro del otro.
-- `PX4_SIM_MODEL=gz_x500`: el mismo modelo de dron que la instancia `0`.
-- `-i 1`: el número de instancia, que da el prefijo `/px4_1/` a sus tópicos.
+- `./build/...`: the path is relative to `~/PX4-Autopilot` (it starts with
+  `./`). With `/build/...` the system would look for it from the root of the
+  disk and not find it.
+- `GZ_IP=127.0.0.1`: the address PX4 uses to talk to Gazebo. `make` sets it by
+  itself for instance `0`; if instance `1` doesn't use the same one, Gazebo
+  creates the drone but PX4 doesn't get its sensors (`Accel Sensor 0 missing`,
+  `ekf2 missing data`) and publishes no odometry.
+- `PX4_GZ_MODEL_POSE="0,20"`: the target's starting position in Gazebo, in
+  metres (`x,y`): here, 20 m north of the interceptor. Without it, the target
+  appears at the same point as the interceptor, one inside the other.
+- `PX4_SIM_MODEL=gz_x500`: the same drone model as instance `0`.
+- `-i 1`: the instance number, which gives its topics the `/px4_1/` prefix.
 
-### 3. Iniciar el launch del proyecto
+### 3. Start the project launch
 
-En otra terminal, **dentro de la carpeta del workspace** (los dos pasos
-anteriores te dejaron en la de PX4, y una terminal nueva empieza en tu carpeta
-personal). Es lo que explica [Cargar el entorno](#cargar-el-entorno):
+In another terminal, **inside the workspace folder** (the two previous steps
+left you in the PX4 folder, and a new terminal starts in your home folder).
+That's what [Load the environment](#load-the-environment) explains:
 
 ```bash
-cd ~/ws_interceptor          # la ruta donde clonaste el workspace
+cd ~/ws_interceptor  # wherever you cloned the workspace
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 launch interceptor interceptor.launch.py mode:=pn
 ```
 
-Si lanzas esos `source` desde otra carpeta, verás
-`bash: install/setup.bash: No such file or directory` y después
-`Package 'interceptor' not found`: son la misma causa, no estás en el workspace.
+If you run those `source` commands from another folder, you'll see
+`bash: install/setup.bash: No such file or directory` and then
+`Package 'interceptor' not found`: same cause, you're not in the workspace.
 
-El argumento `mode` es opcional y solo acepta `pn` o `pursuit`; si se omite,
-vale `pn` (el nombre antiguo, `modo:=`, se acepta de momento como alias). El launch
-inicia el agente con `udp4` en el puerto `8888`, los conversores de
-odometría, los nodos de diagnóstico y el único nodo de modo de vuelo elegido
-con `mode`. `udp4` significa comunicación UDP usando IPv4: una forma de enviar
-paquetes por la red sin mantener una conexión permanente; aquí se usa dentro
-del propio ordenador, para que el agente reciba los datos que le manda PX4.
+The `mode` argument is optional and only accepts `pn` or `pursuit`; if left
+out, it is `pn` (the old name, `modo:=`, is accepted for now as an alias). The
+launch starts the agent with `udp4` on port `8888`, the odometry converters,
+the diagnostic nodes and the single flight mode node chosen with `mode`.
+`udp4` means UDP over IPv4: a way of sending packets over the network without
+keeping a permanent connection; here it's used inside the computer itself, so
+the agent receives the data PX4 sends it.
 
-El launch no inicia PX4 SITL. Los dos comandos anteriores son obligatorios si
-se quiere probar con simulación.
+The launch doesn't start PX4 SITL. The two previous commands are required if
+you want to test with simulation.
 
-### 4. Abrir QGroundControl
+### 4. Open QGroundControl
 
-En otra terminal, ejecuta el AppImage que descargaste en
-[Instalación y compilación](Installation-and-build.md), con la ruta donde lo
-guardaste:
+In another terminal, run the AppImage you downloaded in
+[Installation and build](Installation-and-build.md), with the path where you
+saved it:
 
 ```bash
 ~/QGroundControl-x86_64.AppImage
 ```
 
-También puedes abrirlo con doble clic desde el explorador de archivos, si le
-diste permiso de ejecución. La primera vez pregunta por el tipo de vehículo y
-las unidades: elige *PX4 Pro*, *Multi-Rotor* y *Metric System*, para que las
-distancias coincidan con las de esta wiki.
+You can also open it with a double click from the file manager, if you made it
+executable. The first time it asks for the vehicle type and the units: choose
+*PX4 Pro*, *Multi-Rotor* and *Metric System*, so distances match this wiki.
 
-Se conecta solo a las dos instancias por UDP (puerto `14550`), sin configurar
-nada: el interceptor aparece como vehículo `1` y el target como vehículo `2`.
-Mientras QGroundControl no esté abierto, PX4 no deja armar
+It connects by itself to both instances over UDP (port `14550`), with nothing
+to configure: the interceptor shows up as vehicle `1` and the target as
+vehicle `2`. While QGroundControl is not open, PX4 won't arm
 (`Preflight Fail: No connection to the GCS`).
 
-## Cómo saber si el arranque funcionó
+## How to tell if start-up worked
 
-En una terminal nueva, con el entorno cargado (ver
-[Cargar el entorno](#cargar-el-entorno)):
+In a new terminal, with the environment loaded (see
+[Load the environment](#load-the-environment)):
 
 ```bash
 ros2 node list
@@ -213,52 +212,50 @@ ros2 topic list | grep -E 'vehicle_odometry|target/velocity'
 ros2 topic hz /target/velocity
 ```
 
-Deberías ver los nodos del paquete, los tópicos de odometría de las dos
-instancias y una frecuencia aproximada de 10 Hz para `target/velocity`. La
-frecuencia exacta puede variar; lo importante al principio es que existan datos
-que cambien.
+You should see the package nodes, the odometry topics of both instances and a
+rate of about 10 Hz for `target/velocity`. The exact rate may vary; what
+matters at first is that there is data and that it changes.
 
-## Probar el guiado
+## Test the guidance
 
-No hay que preparar nada más. Cada PX4 mide su posición desde el punto donde
-arrancó, así que el interceptor y el target usan orígenes distintos, pero
-`target_tf2_odometry` lo corrige solo: coloca al target en el mismo marco que
-el interceptor antes de publicarlo (ver
-[Arquitectura y flujo de datos](Architecture.md)). Puedes confirmarlo en una
-terminal nueva, con el entorno cargado (ver
-[Cargar el entorno](#cargar-el-entorno)):
+There's nothing else to prepare. Each PX4 measures its position from the point
+where it started, so interceptor and target use different origins, but
+`target_tf2_odometry` corrects this by itself: it places the target in the
+interceptor's frame before publishing it (see
+[Architecture and data flow](Architecture.md)). You can check it in a new
+terminal, with the environment loaded (see
+[Load the environment](#load-the-environment)):
 
 ```bash
 ros2 run tf2_ros tf2_echo map target/base_link
 ```
 
-Con el target arrancado 20 m al norte, debe salir `y` ≈ 20, no `0`.
+With the target started 20 m to the north, you should get `y` ≈ 20, not `0`.
 
-### Volar
+### Fly
 
-En QGroundControl, eligiendo cada vehículo en el selector de vehículo de la
-barra superior:
+In QGroundControl, picking each vehicle in the vehicle selector of the top bar:
 
-1. **Target (vehículo 2)**: despega (*Takeoff*). Cuando esté en el aire, pulsa
-   en el mapa y usa *Go to location* para mandarlo a otro punto; así la
-   persecución es contra un objetivo en movimiento.
-2. **Interceptor (vehículo 1)**: despega (*Takeoff*) y, ya en el aire, elige
-   en el selector de modo de vuelo **PN mode** o **Pursuit Intercept**.
+1. **Target (vehicle 2)**: take off (*Takeoff*). Once it's in the air, click
+   on the map and use *Go to location* to send it somewhere else; that way the
+   chase is against a moving target.
+2. **Interceptor (vehicle 1)**: take off (*Takeoff*) and, once in the air,
+   select **PN mode** or **Pursuit Intercept** in the flight mode selector.
 
-El interceptor sale a por el target. El modo solo se deja seleccionar cuando
-recibe datos del target; si no, PX4 lo rechaza con
-`No target odometry received yet` (ver
-[Solución de problemas](Quick-reference-and-troubleshooting.md)). Al alcanzarlo
-(a menos de 1 m) el log muestra `Target reached. Stopping pursuit.` una vez por
-cada acercamiento, pero el interceptor sigue en el modo: si el target se aleja,
-vuelve a perseguirlo y el aviso saldrá de nuevo en el siguiente alcance.
-Para terminar, cambia el interceptor a *Hold* o *Land*.
+The interceptor goes after the target. The mode can only be selected once it
+receives target data; otherwise PX4 rejects it with
+`No target odometry received yet` (see
+[Troubleshooting](Quick-reference-and-troubleshooting.md)). When it reaches it
+(within 1 m) the log shows `Target reached. Stopping pursuit.` once per
+approach, but the interceptor stays in the mode: if the target moves away, it
+chases it again and the message will appear again on the next approach. To
+finish, switch the interceptor to *Hold* or *Land*.
 
-## Ejecutar un nodo individual
+## Run a single node
 
-Cada nodo va en su propia terminal, con el entorno cargado (ver
-[Cargar el entorno](#cargar-el-entorno)). Sirve para probar una pieza suelta
-sin levantar todo el launch; PX4 tiene que estar corriendo igualmente.
+Each node goes in its own terminal, with the environment loaded (see
+[Load the environment](#load-the-environment)). It's useful to test one piece
+without bringing up the whole launch; PX4 still has to be running.
 
 ```bash
 ros2 run interceptor target_tf2_odometry
@@ -266,57 +263,58 @@ ros2 run interceptor interceptor_tf2_odometry
 ros2 run interceptor tf2_listener
 ```
 
-El nodo de diagnóstico de odometría es un único ejecutable que sirve para los
-dos drones, así que a mano hay que decirle a cuál escuchar:
+The odometry diagnostic node is a single executable for both drones, so when
+running it by hand you have to tell it which one to listen to:
 
 ```bash
 ros2 run interceptor vehicle_odometry_subscriber --ros-args \
   -p vehicle_name:=target -p odometry_topic:=/px4_1/fmu/out/vehicle_odometry
 ```
 
-Sin esos parámetros usa los valores por defecto, que son los del interceptor.
+Without those parameters it uses the defaults, which are the interceptor's.
 
-No ejecutes dos copias del mismo nodo sin una razón clara: podrían publicar el
-mismo transform o consumir recursos duplicados. Y no lances un modo de guiado
-(`pursuit_mode` o `PN_mode`) mientras el launch tiene otro en marcha: los dos
-intentarían registrarse en PX4 y puede quedar un registro duplicado que no
-responde (ver "Nota sobre los modos", más abajo).
+Don't run two copies of the same node without a clear reason: they could
+publish the same transform or use duplicate resources. And don't start a
+guidance mode (`pursuit_mode` or `PN_mode`) while the launch is running
+another: both would try to register in PX4 and you may end up with a duplicate
+registration that doesn't respond (see "A note on the modes" below).
 
-## Parar la simulación
+## Stop the simulation
 
-Detén primero el launch y después las instancias PX4, cada una con Ctrl-C en su
-terminal. Si dejas procesos antiguos activos, la siguiente prueba puede recibir
-mensajes duplicados o fallar al abrir puertos.
+Stop the launch first and then the PX4 instances, each with Ctrl-C in its
+terminal. If you leave old processes running, the next test may receive
+duplicate messages or fail to open ports.
 
-Al pulsar Ctrl-C, el launch tarda unos **5 segundos** en cerrarse. Es a
-propósito: el modo de vuelo necesita ese margen para darse de baja en PX4 antes
-de que se cierre el agente, que es quien lleva ese aviso. El agente ignora el
-primer Ctrl-C y se cierra cuando el launch insiste, cinco segundos después. Si
-se cerrara a la vez que el resto, PX4 se quedaría con un modo registrado que ya
-no existe, y al relanzar aparecerían avisos de modos sin respuesta.
+When you press Ctrl-C, the launch takes about **5 seconds** to close. That's on
+purpose: the flight mode needs that time to unregister from PX4 before the
+agent, which carries that message, shuts down. The agent ignores the first
+Ctrl-C and closes when the launch insists, five seconds later. If it closed at
+the same time as everything else, PX4 would be left with a registered mode
+that no longer exists, and on the next launch you'd get warnings about
+unresponsive modes.
 
-La ventana de Gazebo la arrancó la instancia `0`, así que se cierra al parar
-esa terminal; si se queda abierta, ciérrala tú. QGroundControl es un programa
-aparte: ciérralo desde su ventana cuando ya no lo necesites. Para comprobar que
-no queda nada colgado:
+The Gazebo window was started by instance `0`, so it closes when you stop that
+terminal; if it stays open, close it yourself. QGroundControl is a separate
+program: close it from its window when you no longer need it. To check that
+nothing is left hanging:
 
 ```bash
 pgrep -a -f 'px4|gz sim|MicroXRCEAgent'
 ```
 
-Si sigue apareciendo algo después de cerrar todas las terminales, ciérralo con
-`pkill -f` y el nombre que aparezca antes de volver a empezar.
+If something still shows up after closing every terminal, close it with
+`pkill -f` and the name shown before starting again.
 
-## Nota sobre los modos
+## A note on the modes
 
-El launch registra en PX4 **un solo** modo de guiado, el que elijas con
-`mode:=pn` o `mode:=pursuit`. Los dos se registran mediante `px4_ros2_cpp`,
-pero de uno en uno: si ambos intentan registrarse a la vez, PX4 puede quedarse
-con un registro duplicado que no responde y ese modo deja de poder activarse.
-Para probar el otro, detén el launch y vuelve a lanzarlo con el otro valor.
-Para entender sus diferencias y sus datos necesarios, consulta
-[Modos de guiado](Guidance-modes.md).
+The launch registers **a single** guidance mode in PX4, the one you choose
+with `mode:=pn` or `mode:=pursuit`. Both register through `px4_ros2_cpp`,
+but one at a time: if both try to register at once, PX4 can end up with a
+duplicate registration that doesn't respond and that mode can no longer be
+activated. To try the other one, stop the launch and start it again with the
+other value. To understand their differences and the data they need, see
+[Guidance modes](Guidance-modes.md).
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Instalación y compilación](Installation-and-build.md) · ➡️ Siguiente: [Arquitectura y flujo de datos](Architecture.md)
+🏠 [Home](Home.md) · ⬅️ Previous: [Installation and build](Installation-and-build.md) · ➡️ Next: [Architecture and data flow](Architecture.md)

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A ROS 2 (Jazzy) workspace for guiding one PX4 drone ("interceptor") to track and intercept another
 ("target") using PX4 vehicle odometry, tf2 frames, and PX4's offboard-mode ROS 2 API. Only
-`src/interceptor` is this project's own code (Spanish comments/docs, English code identifiers);
+`src/interceptor` is this project's own code (code, comments and docs in English);
 `src/px4_msgs`, `src/px4_ros_com`, and `src/px4-ros2-interface-lib` are vendored upstream
 dependencies (PX4, Auterion) checked into `src/` rather than pulled via rosdep from git — don't
 "fix" or refactor code inside those three unless the task is explicitly about updating a vendored
@@ -107,4 +107,3 @@ under `[/px4_<N>]/fmu/out/...` (empty prefix = instance 0).
 
 Guidance tuning constants (speed caps, navigation constant, min ranges) are `static constexpr`
 inside each mode class — no external param files or dynamic reconfiguration.
-</content>

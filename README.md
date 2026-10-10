@@ -1,32 +1,32 @@
 # ws_interceptor
 
-Web del proyecto: https://paco-interceptor.github.io
+Project website: https://paco-interceptor.github.io
 
-Workspace ROS 2 para el seguimiento e interceptación de un vehículo usando datos de odometría PX4.
+ROS 2 workspace for tracking and intercepting a vehicle using PX4 odometry data.
 
-## Requisitos
+## Requirements
 
 - Ubuntu 24.04 (Noble)
 - ROS 2 Jazzy
 - `colcon`
 - `rosdep`
-- Para ejecutar la simulación: PX4 en el commit `14b3f44081`, Micro XRCE-DDS
-  Agent `v2.4.3` y QGroundControl `v5.1.4` (versiones probadas juntas; ver
-  [Instalación y compilación](docs/wiki/Installation-and-build.md))
+- To run the simulation: PX4 at commit `14b3f44081`, Micro XRCE-DDS
+  Agent `v2.4.3` and QGroundControl `v5.1.4` (versions tested together; see
+  [Installation and build](docs/wiki/Installation-and-build.md))
 
-## Obtener el workspace
+## Get the workspace
 
 ```bash
 git clone https://github.com/PACO-Interceptor/ws_interceptor.git
 cd ws_interceptor
 ```
 
-El repositorio ya incluye el paquete propio `interceptor` y las dependencias PX4 necesarias dentro de `src/`.
+The repository already includes the `interceptor` package and the PX4 dependencies it needs inside `src/`.
 
-## Instalar dependencias y compilar
+## Install dependencies and build
 
-Desde la carpeta del workspace (la del `cd` anterior; si abres una terminal
-nueva, vuelve a entrar en ella con `cd ~/ws_interceptor`):
+From the workspace folder (the one from the `cd` above; if you open a new
+terminal, go back into it with `cd ~/ws_interceptor`):
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -36,83 +36,83 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-Para compilar el paquete propio junto con sus dependencias:
+To build only our package and its dependencies:
 
 ```bash
 colcon build --packages-up-to interceptor --symlink-install
 ```
 
-Cada terminal nueva que vaya a usar `ros2` necesita cargar el entorno otra vez,
-desde la carpeta del workspace:
+Every new terminal that will use `ros2` has to load the environment again,
+from the workspace folder:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ```
 
-## Ejecutar la simulación
+## Run the simulation
 
-Hacen falta cuatro terminales, una por pieza. Los detalles y qué debería verse
-en cada paso están en
-[Ejecución de la simulación](docs/wiki/Simulation.md).
+You need four terminals, one per piece. The details, and what you should see
+at each step, are in
+[Running the simulation](docs/wiki/Simulation.md).
 
 ```bash
-# 1. Interceptor (instancia 0). Abre también la ventana de Gazebo
+# 1. Interceptor (instance 0). Also opens the Gazebo window
 cd ~/PX4-Autopilot
 make px4_sitl gz_x500
 
-# 2. Target (instancia 1), 20 m al norte
+# 2. Target (instance 1), 20 m to the north
 cd ~/PX4-Autopilot
 GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_default/bin/px4 -i 1
 
-# 3. Nodos del proyecto, con el modo de guiado elegido
-cd ~/ws_interceptor          # la ruta donde clonaste el workspace
+# 3. Project nodes, with the chosen guidance mode
+cd ~/ws_interceptor  # wherever you cloned the workspace
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 launch interceptor interceptor.launch.py mode:=pn
 
-# 4. Estación de tierra
+# 4. Ground station
 ~/QGroundControl-x86_64.AppImage
 ```
 
-En QGroundControl: despega el target (vehículo 2), mándalo a otro punto con
-*Go to location*, despega el interceptor (vehículo 1) y elígele **PN mode** o
-**Pursuit Intercept** en el selector de modo.
+In QGroundControl: take off the target (vehicle 2), send it somewhere else with
+*Go to location*, take off the interceptor (vehicle 1) and pick **PN mode** or
+**Pursuit Intercept** in the flight mode selector.
 
-El argumento `mode` es opcional y solo acepta `pn` o `pursuit`: elige qué modo
-de guiado se registra en PX4, ya que solo se lanza uno. Si se omite, vale `pn`.
-El nombre antiguo, `modo:=`, sigue funcionando de momento como alias de `mode`.
-Sin QGroundControl conectado, PX4 no deja armar. Los nodos individuales también
-pueden iniciarse con `ros2 run interceptor <ejecutable>`.
+The `mode` argument is optional and only accepts `pn` or `pursuit`: it chooses
+which guidance mode is registered in PX4, since only one is launched. If left
+out, it is `pn`. The old name, `modo:=`, still works for now as an alias of `mode`.
+PX4 won't arm without QGroundControl connected. Single nodes can also be
+started with `ros2 run interceptor <executable>`.
 
-Para parar: Ctrl-C primero en el launch, que tarda unos 5 segundos a propósito,
-y después en las instancias PX4.
+To stop: Ctrl-C in the launch first, which takes about 5 seconds on purpose,
+then in the PX4 instances.
 
-## Estructura
+## Layout
 
-- `src/interceptor`: nodos y lanzador de este proyecto.
-- `src/px4_msgs`: mensajes PX4.
-- `src/px4_ros_com`: comunicación PX4-ROS 2.
-- `src/px4-ros2-interface-lib`: biblioteca C++ de la interfaz PX4-ROS 2.
+- `src/interceptor`: this project's nodes and launch file.
+- `src/px4_msgs`: PX4 messages.
+- `src/px4_ros_com`: PX4-ROS 2 communication.
+- `src/px4-ros2-interface-lib`: C++ library for the PX4-ROS 2 interface.
 
-Los directorios `build/`, `install/` y `log/` se generan localmente y no forman parte del repositorio.
+The `build/`, `install/` and `log/` folders are generated locally and are not part of the repository.
 
 ## Wiki
 
-La [wiki introductoria local](docs/wiki/Home.md) explica paso a paso cómo
-preparar el workspace, ejecutar la simulación y entender el papel de cada nodo.
-Es la única fuente: la [wiki de GitHub](https://github.com/PACO-Interceptor/ws_interceptor/wiki)
-se genera a partir de ella y no se edita a mano.
+The [local introductory wiki](docs/wiki/Home.md) explains step by step how to
+set up the workspace, run the simulation and understand what each node does.
+It is the only source: the [GitHub wiki](https://github.com/PACO-Interceptor/ws_interceptor/wiki)
+is generated from it and is never edited by hand.
 
 ```bash
-python3 tools/publicar-wiki.py --dry-run   # ver qué cambiaría
-python3 tools/publicar-wiki.py             # publicar
+python3 tools/publish_wiki.py --dry-run  # see what would change
+python3 tools/publish_wiki.py            # publish
 ```
 
-El script convierte los enlaces al formato de la wiki (páginas sin extensión y
-con su nombre en español, rutas al código como URLs absolutas) y sube el
-resultado. Al añadir una página nueva en `docs/wiki/`, hay que darle nombre en
-el diccionario `PAGINAS` de ese script.
+The script converts the links to the wiki format (pages without extension and
+with their page title, paths to the code as absolute URLs) and pushes the
+result. When adding a new page to `docs/wiki/`, give it a title in the
+`PAGES` dictionary of that script.
 
 ## License
 

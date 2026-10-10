@@ -1,149 +1,149 @@
-# Mapa completo de archivos y dependencias
+# Workspace map and dependencies
 
-Esta página cubre **todos los archivos que forman parte de `src/` y `.github/`**.
-El inventario actual contiene 590 archivos:
+This page covers **every file in `src/` and `.github/`**. The current
+inventory has 590 files:
 
-| Zona | Archivos | Propósito |
+| Area | Files | Purpose |
 | --- | ---: | --- |
-| `src/interceptor` | 12 | Código propio del proyecto. |
-| `src/px4_msgs` | 289 | Definiciones ROS 2 equivalentes a mensajes, servicios y acciones de PX4. |
-| `src/px4_ros_com` | 28 | Ejemplos y utilidades de comunicación entre ROS 2 y PX4. |
-| `src/px4-ros2-interface-lib` | 258 | Biblioteca vendorizada para registrar modos PX4 y enviar setpoints. |
-| `.github/workflows` | 3 | Automatización de CI, resúmenes de issues y releases. |
+| `src/interceptor` | 12 | The project's own code. |
+| `src/px4_msgs` | 289 | ROS 2 definitions matching PX4 messages, services and actions. |
+| `src/px4_ros_com` | 28 | Examples and utilities for communication between ROS 2 and PX4. |
+| `src/px4-ros2-interface-lib` | 258 | Vendored library to register PX4 modes and send setpoints. |
+| `.github/workflows` | 3 | CI, issue summaries and releases. |
 
-## Cómo consultar este mapa
+## How to use this map
 
-No hace falta abrir los 590 archivos en orden: el número indica cuántos archivos
-hay, no una secuencia de lectura. Empieza por `src/interceptor`, porque es el
-código de este proyecto, y después consulta solo la dependencia que necesites
-entender. Cuando veas una carpeta, piensa que es una caja con un propósito;
-cuando veas un archivo, pregunta si contiene instrucciones, datos,
-configuración o documentación. Esta clasificación es más útil que memorizar
-los nombres, y encaja con los cinco tipos principales que aparecen en el
-inventario:
+There's no need to open the 590 files in order: the number says how many files
+there are, not a reading sequence. Start with `src/interceptor`, because it's
+this project's code, and then look only at the dependency you need to
+understand. When you see a folder, think of it as a box with a purpose; when
+you see a file, ask whether it holds instructions, data, configuration or
+documentation. That classification is more useful than memorising names, and
+it fits the five main kinds of file in the inventory:
 
-1. **Código propio**: `src/interceptor`.
-2. **Dependencias vendorizadas**: los otros tres paquetes dentro de `src/`.
-3. **Interfaces**: archivos `.msg` y `.srv` que describen estructuras de datos.
-4. **Configuración y construcción**: `CMakeLists.txt`, `package.xml`, YAML,
-   JSON, repositorios y archivos de formato.
-5. **Automatización y documentación**: workflows, README, scripts y documentos
-   de contribución.
+1. **Our code**: `src/interceptor`.
+2. **Vendored dependencies**: the other three packages inside `src/`.
+3. **Interfaces**: `.msg` and `.srv` files that describe data structures.
+4. **Configuration and build**: `CMakeLists.txt`, `package.xml`, YAML, JSON,
+   repository lists and format files.
+5. **Automation and documentation**: workflows, READMEs, scripts and
+   contribution documents.
 
-Una dependencia vendorizada no se debe modificar para arreglar un comportamiento
-del interceptor. Primero se debe entender qué interfaz ofrece y cambiar solo
-`src/interceptor`, salvo que el objetivo sea actualizar esa dependencia.
+A vendored dependency should not be changed to fix the interceptor's
+behaviour. First understand which interface it offers and change only
+`src/interceptor`, unless the goal is to update that dependency.
 
-## `src/interceptor`: los 12 archivos propios
+## `src/interceptor`: our 12 files
 
-| Archivo | Qué hace |
+| File | What it does |
 | --- | --- |
-| [`CMakeLists.txt`](../../src/interceptor/CMakeLists.txt) | Declara dependencias, compila los seis ejecutables e instala binarios y launch. |
-| [`package.xml`](../../src/interceptor/package.xml) | Declara el nombre, versión, licencia y dependencias ROS 2 del paquete. |
-| [`README.md`](../../src/interceptor/README.md) | Guía breve de instalación y enlaces oficiales. |
-| [`LICENSE`](../../src/interceptor/LICENSE) | Condiciones legales del paquete propio. |
-| [`.gitignore`](../../src/interceptor/.gitignore) | Evita guardar artefactos locales del paquete. |
-| [`launch/interceptor.launch.py`](../../src/interceptor/launch/interceptor.launch.py) | Inicia agente DDS, conversores y diagnóstico, y un solo modo elegido con `mode:=pn\|pursuit`. |
-| [`src/interceptor_tf2_odometry.cpp`](../../src/interceptor/src/interceptor_tf2_odometry.cpp) | Convierte odometría de PX4 y publica el frame del interceptor. |
-| [`src/target_tf2_odometry.cpp`](../../src/interceptor/src/target_tf2_odometry.cpp) | Publica el frame del target (desplazado al origen del interceptor) y su velocidad ENU. |
-| [`src/pursuit_mode.cpp`](../../src/interceptor/src/pursuit_mode.cpp) | Modo de persecución pura basado en posición. |
-| [`src/PN_mode.cpp`](../../src/interceptor/src/PN_mode.cpp) | Modo de navegación proporcional basado en posición y velocidad. |
-| [`src/tf2_listener.cpp`](../../src/interceptor/src/tf2_listener.cpp) | Herramienta para imprimir transformaciones relativas. |
-| [`src/vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/vehicle_odometry_subscriber.cpp) | Imprime la odometría de un vehículo para diagnóstico; el launch lo arranca dos veces con parámetros `vehicle_name`/`odometry_topic` distintos. |
+| [`CMakeLists.txt`](../../src/interceptor/CMakeLists.txt) | Declares dependencies, builds the six executables and installs binaries and launch files. |
+| [`package.xml`](../../src/interceptor/package.xml) | Declares the package name, version, licence and ROS 2 dependencies. |
+| [`README.md`](../../src/interceptor/README.md) | Short installation guide and official links. |
+| [`LICENSE`](../../src/interceptor/LICENSE) | Legal terms of our package. |
+| [`.gitignore`](../../src/interceptor/.gitignore) | Keeps local build artefacts of the package out of git. |
+| [`launch/interceptor.launch.py`](../../src/interceptor/launch/interceptor.launch.py) | Starts the DDS agent, converters and diagnostics, and a single mode chosen with `mode:=pn\|pursuit`. |
+| [`src/interceptor_tf2_odometry.cpp`](../../src/interceptor/src/interceptor_tf2_odometry.cpp) | Converts PX4 odometry and publishes the interceptor frame. |
+| [`src/target_tf2_odometry.cpp`](../../src/interceptor/src/target_tf2_odometry.cpp) | Publishes the target frame (shifted to the interceptor's origin) and its ENU velocity. |
+| [`src/pursuit_mode.cpp`](../../src/interceptor/src/pursuit_mode.cpp) | Pure pursuit mode based on position. |
+| [`src/PN_mode.cpp`](../../src/interceptor/src/PN_mode.cpp) | Proportional navigation mode based on position and velocity. |
+| [`src/tf2_listener.cpp`](../../src/interceptor/src/tf2_listener.cpp) | Tool that prints relative transforms. |
+| [`src/vehicle_odometry_subscriber.cpp`](../../src/interceptor/src/vehicle_odometry_subscriber.cpp) | Prints a vehicle's odometry for diagnostics; the launch starts it twice with different `vehicle_name`/`odometry_topic` parameters. |
 
-La explicación línea por línea de estos archivos está en
-[Lectura guiada del código](Code-walkthrough.md).
+The overall reading guide for these files is the
+[Code walkthrough](Code-walkthrough.md), and the "Line by line" pages go
+through them in detail.
 
-## `src/px4_msgs`: mensajes y servicios PX4
+## `src/px4_msgs`: PX4 messages and services
 
-Este paquete no implementa el control de vuelo. Define los tipos que permiten
-que ROS 2 intercambie datos con PX4.
+This package doesn't implement flight control. It defines the types that let
+ROS 2 exchange data with PX4.
 
-| Zona | Archivos actuales | Explicación |
+| Area | Current files | Explanation |
 | --- | ---: | --- |
-| `msg/*.msg` | 261 | Cada archivo describe campos y tipos de un mensaje uORB de PX4. |
-| `srv/VehicleCommand.srv` | 1 | Describe una petición/respuesta para comandos de vehículo. |
-| `CMakeLists.txt` | 1 | Genera código ROS 2 a partir de `.msg` y `.srv`. |
-| `package.xml` | 1 | Declara generadores y runtime de interfaces. |
-| `README.md` | 1 | Documenta el paquete oficial y su uso. |
-| `CHANGELOG.rst` | 1 | Historial de cambios. |
-| `CONTRIBUTING.md` | 1 | Reglas para contribuir al paquete externo. |
-| `QUALITY_DECLARATION.md` | 1 | Declaración de calidad del paquete. |
-| `CODE_OF_CONDUCT.md` | 1 | Normas de convivencia. |
-| `SECURITY.md` | 1 | Proceso de reporte de vulnerabilidades. |
-| `LICENSE` | 1 | Licencia BSD-3-Clause. |
-| `.github/` | 10 | Plantillas, configuración de dependabot y workflows del upstream. |
-| `container/` | 2 | Dockerfile y scripts para construir paquetes Debian. |
-| `scripts/` | 3 | Automatización de changelog, releases y builds. |
-| `.gitignore`, `.dockerignore`, `.pre-commit-config.yaml` | 3 | Exclusiones y herramientas de desarrollo. |
+| `msg/*.msg` | 261 | Each file describes the fields and types of a PX4 uORB message. |
+| `srv/VehicleCommand.srv` | 1 | Describes a request/response for vehicle commands. |
+| `CMakeLists.txt` | 1 | Generates ROS 2 code from the `.msg` and `.srv` files. |
+| `package.xml` | 1 | Declares the interface generators and runtime. |
+| `README.md` | 1 | Documents the official package and its use. |
+| `CHANGELOG.rst` | 1 | Change history. |
+| `CONTRIBUTING.md` | 1 | Rules for contributing to the external package. |
+| `QUALITY_DECLARATION.md` | 1 | The package's quality declaration. |
+| `CODE_OF_CONDUCT.md` | 1 | Code of conduct. |
+| `SECURITY.md` | 1 | Vulnerability reporting process. |
+| `LICENSE` | 1 | BSD-3-Clause licence. |
+| `.github/` | 10 | Upstream templates, Dependabot configuration and workflows. |
+| `container/` | 2 | Dockerfile and scripts to build Debian packages. |
+| `scripts/` | 3 | Changelog, release and build automation. |
+| `.gitignore`, `.dockerignore`, `.pre-commit-config.yaml` | 3 | Exclusions and development tools. |
 
-### Cómo leer un `.msg`
+### How to read a `.msg`
 
-Un `.msg` contiene líneas como `float32 x` o `uint64 timestamp`. No es una
-clase C++ escrita a mano: el generador de ROS 2 convierte esa descripción en
-tipos de programación. Por eso el interceptor puede escribir
-`px4_msgs::msg::VehicleOdometry` y acceder a `position`, `velocity` o `q`.
+A `.msg` holds lines like `float32 x` or `uint64 timestamp`. It isn't a
+hand-written C++ class: the ROS 2 generator turns that description into
+programming types. That's why the interceptor can write
+`px4_msgs::msg::VehicleOdometry` and access `position`, `velocity` or `q`.
 
-Los 261 mensajes se organizan por capacidad de PX4: odometría, sensores,
-actuadores, navegación, estado, setpoints y comandos. Cada archivo concreto
-describe un contrato de datos; cambiarlo puede romper la compatibilidad con la
-versión de PX4 que publica esos campos.
+The 261 messages are grouped by PX4 capability: odometry, sensors, actuators,
+navigation, status, setpoints and commands. Each file describes a data
+contract; changing it can break compatibility with the PX4 version that
+publishes those fields.
 
-## `src/px4_ros_com`: puente y ejemplos ROS 2/PX4
+## `src/px4_ros_com`: ROS 2/PX4 bridge and examples
 
-| Zona | Archivos actuales | Explicación |
+| Area | Current files | Explanation |
 | --- | ---: | --- |
-| `CMakeLists.txt` y `package.xml` | 2 | Construyen el paquete y declaran Eigen, ROS 2 y `px4_msgs`. |
-| `include/px4_ros_com/` | 1 header | Declara las conversiones de marcos, usadas por el interceptor. |
-| `src/lib/frame_transforms.cpp` | 1 | Implementa conversiones NED/ENU y orientaciones PX4/ROS. |
-| `src/examples/` | 5 | Ejemplos C++ de listeners, advertisers y offboard. |
-| `src/examples/offboard_py/` | 1 | Ejemplo Python de control offboard. |
-| `px4_ros_com/` (paquete Python) | 2 | `__init__.py` y `module_to_import.py`, ambos vacíos: el esqueleto Python que instala `ament_python_install_package` en `CMakeLists.txt`, sin uso real en los ejemplos actuales. |
-| `launch/` | 2 | Launch de ejemplos de comunicación (YAML y Python). |
-| `test/` | 4 | Pruebas Python del paquete externo. |
-| `scripts/` | 4 | Scripts de instalación y compilación. |
-| `README.md`, `LICENSE` | 2 | Documentación y licencia. |
-| `.github/`, `.vscode/`, `.gitignore` | 4 | CI, configuración del editor y exclusiones. |
+| `CMakeLists.txt` and `package.xml` | 2 | Build the package and declare Eigen, ROS 2 and `px4_msgs`. |
+| `include/px4_ros_com/` | 1 header | Declares the frame conversions used by the interceptor. |
+| `src/lib/frame_transforms.cpp` | 1 | Implements the NED/ENU conversions and the PX4/ROS orientations. |
+| `src/examples/` | 5 | C++ examples of listeners, advertisers and offboard control. |
+| `src/examples/offboard_py/` | 1 | Python offboard control example. |
+| `px4_ros_com/` (Python package) | 2 | `__init__.py` and `module_to_import.py`, both empty: the Python skeleton installed by `ament_python_install_package` in `CMakeLists.txt`, not really used by the current examples. |
+| `launch/` | 2 | Launch files for the communication examples (YAML and Python). |
+| `test/` | 4 | Python tests of the external package. |
+| `scripts/` | 4 | Install and build scripts. |
+| `README.md`, `LICENSE` | 2 | Documentation and licence. |
+| `.github/`, `.vscode/`, `.gitignore` | 4 | CI, editor settings and exclusions. |
 
-El archivo que usa directamente nuestro código es
-`include/px4_ros_com/frame_transforms.h`. Sus funciones evitan duplicar a mano
-los cambios de signos y ejes entre NED y ENU.
+The file our code uses directly is `include/px4_ros_com/frame_transforms.h`.
+Its functions save us from repeating by hand the sign and axis changes between
+NED and ENU.
 
-## `src/px4-ros2-interface-lib`: biblioteca de modos PX4
+## `src/px4-ros2-interface-lib`: PX4 modes library
 
-Esta dependencia proporciona `px4_ros2::ModeBase`,
-`px4_ros2::NodeWithMode`, `OdometryLocalPosition` y
-`TrajectorySetpointType`.
+This dependency provides `px4_ros2::ModeBase`, `px4_ros2::NodeWithMode`,
+`OdometryLocalPosition` and `TrajectorySetpointType`.
 
-| Zona | Archivos actuales | Explicación |
+| Area | Current files | Explanation |
 | --- | ---: | --- |
-| `px4_ros2_cpp/` | 146 | Biblioteca C++: headers públicos, implementación, componentes, odometría, navegación, setpoints y tests. Incluye su propio `CMakeLists.txt`, `package.xml` y `rosdep-*.yaml` por distribución ROS. |
-| `px4_ros2_py/` | 17 | Bindings y paquete Python experimental, con su propio `CMakeLists.txt` y `package.xml`. |
-| `examples/cpp/` | 54 | Modos y ejemplos C++: goto, misión, rover, VTOL, manual y navegación; cada ejemplo trae su propio `CMakeLists.txt` y `package.xml`. |
-| `examples/python/` | 12 | Ejemplos Python de modos, cada uno con su propio `package.xml`. |
-| `mission/` | 2 | Un esquema (`schema.yaml`) y un ejemplo (`pickup.json`) de misión. |
-| `python_docs/` | 5 | Configuración y páginas de documentación Python (Sphinx). |
-| `scripts/` | 5 | Comprobación de compatibilidad, topics, clang-tidy y Doxygen. |
-| `.github/` | 6 | Workflows de CI, lint, publicación de paquetes Debian, ramas de release y validación de misiones. |
-| `.clang-format`, `.clang-format-ignore`, `.clang-tidy`, `.pre-commit-config.yaml`, `.vscode/` | 5 | Formato, análisis estático, hooks y editor. |
-| `README.md`, `LICENSE`, `Doxyfile`, `.gitignore`, `dependencies.repos`, `ruff.toml` | 6 | Documentación, licencia, generación de API, exclusiones, dependencias externas y configuración del linter Python `ruff`. |
+| `px4_ros2_cpp/` | 146 | C++ library: public headers, implementation, components, odometry, navigation, setpoints and tests. Includes its own `CMakeLists.txt`, `package.xml` and `rosdep-*.yaml` per ROS distribution. |
+| `px4_ros2_py/` | 17 | Experimental Python bindings and package, with its own `CMakeLists.txt` and `package.xml`. |
+| `examples/cpp/` | 54 | C++ modes and examples: goto, mission, rover, VTOL, manual and navigation; each example has its own `CMakeLists.txt` and `package.xml`. |
+| `examples/python/` | 12 | Python mode examples, each with its own `package.xml`. |
+| `mission/` | 2 | A mission schema (`schema.yaml`) and an example (`pickup.json`). |
+| `python_docs/` | 5 | Python documentation settings and pages (Sphinx). |
+| `scripts/` | 5 | Compatibility check, topics, clang-tidy and Doxygen. |
+| `.github/` | 6 | CI, lint, Debian package publishing, release branch and mission validation workflows. |
+| `.clang-format`, `.clang-format-ignore`, `.clang-tidy`, `.pre-commit-config.yaml`, `.vscode/` | 5 | Formatting, static analysis, hooks and editor. |
+| `README.md`, `LICENSE`, `Doxyfile`, `.gitignore`, `dependencies.repos`, `ruff.toml` | 6 | Documentation, licence, API generation, exclusions, external dependencies and settings for the Python linter `ruff`. |
 
-### Qué ocurre cuando usamos esta biblioteca
+### What happens when we use this library
 
-`pursuit_mode.cpp` no publica directamente un mensaje PX4 de bajo nivel. Hereda
-de `ModeBase`, crea un `TrajectorySetpointType` y deja que la biblioteca:
+`pursuit_mode.cpp` doesn't publish a low-level PX4 message directly. It
+inherits from `ModeBase`, creates a `TrajectorySetpointType` and lets the
+library:
 
-1. registre el modo con PX4;
-2. compruebe compatibilidad de mensajes;
-3. gestione el estado del modo;
-4. traduzca velocidad/aceleración a los mensajes que PX4 espera.
+1. register the mode with PX4;
+2. check message compatibility;
+3. manage the mode's state;
+4. translate velocity/acceleration into the messages PX4 expects.
 
-Los ejemplos vendorizados son material didáctico útil, pero no forman parte del
-algoritmo del interceptor.
+The vendored examples are useful learning material, but they're not part of the
+interceptor's algorithm.
 
-## Cómo viajan las dependencias durante la compilación
+## How the dependencies flow during the build
 
-La relación entre paquetes puede imaginarse como una cadena:
+The relation between packages can be pictured as a chain:
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
@@ -154,132 +154,132 @@ flowchart LR
     ROS2CPP --> INTERCEPTOR
 ```
 
-`px4_msgs` define tipos. `px4_ros_com` usa esos tipos y ofrece conversiones.
-`px4_ros2_cpp` usa mensajes y publica la infraestructura de modos. Finalmente,
-`interceptor` combina esas piezas en sus nodos y algoritmos.
+`px4_msgs` defines types. `px4_ros_com` uses those types and offers
+conversions. `px4_ros2_cpp` uses messages and provides the mode
+infrastructure. Finally, `interceptor` combines those pieces in its nodes and
+algorithms.
 
-Por eso `colcon build --packages-up-to interceptor` puede construir más de un
-paquete aunque el cambio esté en un solo `.cpp`: necesita tener disponible toda
-la cadena previa.
+That's why `colcon build --packages-up-to interceptor` can build more than one
+package even if the change is in a single `.cpp`: it needs the whole chain
+before it.
 
-## Extensiones de archivo como guía de lectura
+## File extensions as a reading guide
 
-| Extensión | Pregunta que ayuda a responder |
+| Extension | Question it helps answer |
 | --- | --- |
-| `.cpp` | ¿Qué comportamiento ejecutable implementa? |
-| `.hpp`/`.h` | ¿Qué interfaz declara para otros archivos? |
-| `.msg` | ¿Qué campos viajan por un mensaje ROS 2? |
-| `.srv` | ¿Qué petición y respuesta define un servicio? |
-| `.xml` | ¿Qué metadatos o dependencias declara? |
-| `CMakeLists.txt` | ¿Cómo se configura y enlaza la compilación? |
-| `.py` | ¿Es launch, herramienta, ejemplo o binding? |
-| `.yaml`/`.yml` | ¿Es configuración de herramientas o automatización CI? |
-| `.sh`/`.bash` | ¿Qué pasos repetitivos de shell se automatizan? |
-| `.rst`/`.md` | ¿Qué instrucciones o decisiones documenta? |
-| `.json` | ¿Qué datos de ejemplo o misión se representan? |
+| `.cpp` | What executable behaviour does it implement? |
+| `.hpp`/`.h` | What interface does it declare for other files? |
+| `.msg` | Which fields travel in a ROS 2 message? |
+| `.srv` | Which request and response does a service define? |
+| `.xml` | Which metadata or dependencies does it declare? |
+| `CMakeLists.txt` | How is the build configured and linked? |
+| `.py` | Is it a launch file, a tool, an example or a binding? |
+| `.yaml`/`.yml` | Is it tool configuration or CI automation? |
+| `.sh`/`.bash` | Which repetitive shell steps does it automate? |
+| `.rst`/`.md` | Which instructions or decisions does it document? |
+| `.json` | Which example or mission data does it represent? |
 
-La extensión no lo explica todo, pero permite decidir qué leer primero cuando se
-entra en una carpeta desconocida.
+The extension doesn't explain everything, but it helps you decide what to read
+first when you open an unknown folder.
 
-## Qué pertenece al producto y qué pertenece al entorno
+## What belongs to the product and what to the environment
 
-El producto que el equipo está desarrollando es principalmente
-`src/interceptor`. El resto del workspace hace posible compilarlo y conectarlo
-con PX4. `.github/workflows` automatiza el mantenimiento del repositorio, pero
-no se ejecuta durante el vuelo.
+The product the team is building is mainly `src/interceptor`. The rest of the
+workspace makes it possible to build it and connect it to PX4.
+`.github/workflows` automates repository maintenance, but it doesn't run during
+flight.
 
-Esta distinción ayuda a decidir dónde mirar ante un fallo, y qué hacer antes de
-tocar un archivo:
+This helps decide where to look when something fails, and what to do before
+touching a file:
 
-- fallo en el algoritmo o en un tópico propio: `src/interceptor`, que es
-  código que mantenemos nosotros;
-- mensaje ausente o incompatible: revisar `px4_msgs` y la versión de PX4;
-- conversión de coordenadas: revisar `px4_ros_com`;
-- registro del modo/setpoint: revisar `px4-ros2-interface-lib`;
-- compilación o pruebas automáticas: raíz `.github` y `CMakeLists.txt`;
-- documentación o instrucciones: README y wiki;
-- si el archivo está en `px4_msgs`, `px4_ros_com` o `px4-ros2-interface-lib`,
-  es una dependencia externa: antes de modificarlo hay que consultar su
-  versión upstream, su licencia, su changelog y sus pruebas, para no acabar
-  manteniendo nosotros una implementación que en realidad mantiene otro
-  proyecto — y si es un `.msg`/`.srv` o un `CMakeLists.txt`/`package.xml`, el
-  cambio además altera un contrato de comunicación o la compilación/runtime;
-- si el archivo está bajo `.github`, puede alterar CI, permisos o releases.
+- a fault in the algorithm or in one of our topics: `src/interceptor`, which is
+  code we maintain;
+- a missing or incompatible message: check `px4_msgs` and the PX4 version;
+- coordinate conversion: check `px4_ros_com`;
+- mode registration/setpoints: check `px4-ros2-interface-lib`;
+- build or automated tests: the root `.github` and `CMakeLists.txt`;
+- documentation or instructions: READMEs and wiki;
+- if the file is in `px4_msgs`, `px4_ros_com` or `px4-ros2-interface-lib`, it's
+  an external dependency: before changing it, check its upstream version,
+  licence, changelog and tests, so we don't end up maintaining code that
+  another project really maintains. If it's a `.msg`/`.srv` or a
+  `CMakeLists.txt`/`package.xml`, the change also alters a communication
+  contract or the build/runtime;
+- if the file is under `.github`, it can change CI, permissions or releases.
 
-## `.github/workflows`: automatización del repositorio
+## `.github/workflows`: repository automation
 
-Esta sección resume qué hace cada uno de los tres workflows propios del
-repositorio (no los de las dependencias vendorizadas, ver más abajo).
+This section summarises what each of the repository's three workflows does
+(not those of the vendored dependencies; see further down).
 
 ### `ci-build.yml`
 
-Archivo: [`ci-build.yml`](../../.github/workflows/ci-build.yml)
+File: [`ci-build.yml`](../../.github/workflows/ci-build.yml)
 
-Se ejecuta en `push` y pull request hacia `main` o `master`. El job corre en
-`ubuntu-24.04` dentro del contenedor `ros:jazzy-ros-base`, hace checkout,
-instala `colcon`, `rosdep` y el compilador con `apt-get`, e inicializa rosdep
-(`rosdep init` seguido de `true`, para que el paso no falle si ya estaba
-inicializado) antes de instalar las dependencias declaradas por todos los
-paquetes fuente. Con el entorno ROS ya cargado (`source
-/opt/ros/jazzy/setup.bash`), compila hasta `interceptor` con `colcon build
---packages-up-to interceptor`, ejecuta `colcon test --packages-select
-interceptor` y muestra el resultado con `colcon test-result --verbose`. Es la
-reproducción automática de los comandos de
-[Instalación y compilación](Installation-and-build.md).
+It runs on `push` and on pull requests to `main` or `master`, with a read-only
+token (`permissions: contents: read`). The job runs on `ubuntu-24.04` inside
+the `ros:jazzy-ros-base` container: it checks out the code, installs `colcon`,
+`rosdep` and the compiler with `apt-get`, and initialises rosdep (`rosdep init`
+followed by `true`, so the step doesn't fail if it was already initialised)
+before installing the dependencies declared by every source package. With the
+ROS environment loaded (`source /opt/ros/jazzy/setup.bash`), it builds up to
+`interceptor` with `colcon build --packages-up-to interceptor`, runs
+`colcon test --packages-select interceptor` and shows the result with
+`colcon test-result --verbose`. It's the automatic version of the commands in
+[Installation and build](Installation-and-build.md).
 
 ### `summary.yml`
 
-Archivo: [`summary.yml`](../../.github/workflows/summary.yml)
+File: [`summary.yml`](../../.github/workflows/summary.yml)
 
-Se activa cuando se abre un issue. `name` identifica el workflow. `on: issues:
-types: [opened]` lo limita a issues nuevos. `permissions` concede solo lectura
-de modelos/contenido y escritura de issues.
+It runs when an issue is opened, and only if the author is an owner, member or
+collaborator of the repository (`author_association`), so outside users can't
+trigger it. `permissions` grants only read access to models/content and write
+access to issues.
 
-El job corre en `ubuntu-latest`, hace checkout y ejecuta
-`actions/ai-inference@v1` para producir un resumen. `id: inference` permite
-referenciar su salida como `steps.inference.outputs.response`. El prompt usa
-el título y cuerpo del issue como datos no confiables y ordena resumirlos, no
-obedecer instrucciones que puedan contener.
+The job runs on `ubuntu-latest`, checks out the code and runs
+`actions/ai-inference@v1` to produce a summary. `id: inference` lets the next
+step use its output as `steps.inference.outputs.response`. The prompt treats
+the issue title and body as untrusted data and asks for a summary, not to
+follow any instructions they might contain.
 
-La última acción ejecuta `gh issue comment`. Sus variables de entorno reciben
-el token de GitHub, el número del issue y la respuesta generada. Por tanto,
-este workflow publica automáticamente un comentario; no modifica el código.
+The last step runs `gh issue comment`. Its environment variables receive the
+GitHub token, the issue number and the generated response. So this workflow
+posts a comment automatically; it doesn't change the code.
 
 ### `tagging.yml`
 
-Archivo: [`tagging.yml`](../../.github/workflows/tagging.yml)
+File: [`tagging.yml`](../../.github/workflows/tagging.yml)
 
-`workflow_run` espera a que termine el workflow cuyo nombre exacto es
-`CI - Build ROS 2 workspace`, únicamente en `main`; `workflow_dispatch` permite
-lanzarlo manualmente. El job solo continúa si fue manual o si CI terminó con
-éxito.
+`workflow_run` waits for the workflow named exactly `CI - Build ROS 2
+workspace` to finish, only on `main`; `workflow_dispatch` lets you run it by
+hand. The job only carries on if it was started by hand or if CI succeeded.
 
-`permissions: contents: write` permite crear tags/releases. `checkout` usa
-`fetch-depth: 0` para disponer del historial completo. El action
-`github-tag-action` calcula un tag semántico usando `GITHUB_TOKEN`, prefijo `v`
-y bump por defecto `none`. Si produce `new_tag`, `action-gh-release` crea una
-release, usa el tag como nombre y genera notas automáticamente. Necesita
-permiso `contents: write`, por lo que no se debe modificar sin entender sus
-efectos sobre publicaciones reales.
+`permissions: contents: write` allows creating tags and releases. `checkout`
+uses `fetch-depth: 0` to get the full history. The `github-tag-action` action
+computes a semantic tag using `GITHUB_TOKEN`, prefix `v` and default bump
+`none`. If it produces a `new_tag`, `action-gh-release` creates a release,
+uses the tag as its name and generates the notes automatically. It needs the
+`contents: write` permission, so don't change it without understanding its
+effect on real releases.
 
-## Archivos `.github` dentro de dependencias
+## `.github` folders inside dependencies
 
-Los directorios `.github` de `px4_msgs`, `px4_ros_com` y
-`px4-ros2-interface-lib` pertenecen a esos proyectos upstream. Contienen
-workflows de compilación/lint/release, plantillas de pull request, dependabot,
-codeowners y configuración de seguridad. No controlan directamente el workflow
-raíz de `ws_interceptor`; cada repositorio conserva sus propias automatizaciones
-porque las dependencias se han copiado dentro de este workspace.
+The `.github` folders of `px4_msgs`, `px4_ros_com` and
+`px4-ros2-interface-lib` belong to those upstream projects. They hold build,
+lint and release workflows, pull request templates, Dependabot, code owners and
+security settings. They don't control the root workflow of `ws_interceptor`;
+each one keeps its own automation because the dependencies were copied into
+this workspace.
 
-Si has seguido el recorrido recomendado de la wiki, este mapa llega después de
-[Lectura guiada del código](Code-walkthrough.md) y de las tres páginas de
-"Análisis línea por línea", así que el siguiente paso natural es
-[Referencia rápida y solución de problemas](Quick-reference-and-troubleshooting.md).
-Si en cambio llegaste directo a esta página sin pasar por las anteriores, úsala
-como índice para localizar el archivo que buscas, y luego consulta
-[Lectura guiada del código](Code-walkthrough.md) o las páginas de
-"Análisis línea por línea" para entender sus líneas en detalle.
+If you've followed the wiki's reading order, this map comes after the
+[Code walkthrough](Code-walkthrough.md) and the three "Line by line" pages, so
+the natural next step is
+[Quick reference and troubleshooting](Quick-reference-and-troubleshooting.md).
+If you came straight to this page, use it as an index to find the file you're
+looking for, and then check the [Code walkthrough](Code-walkthrough.md) or the
+"Line by line" pages to understand it in detail.
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Análisis línea por línea: modos de guiado](Line-by-line-guidance-modes.md) · ➡️ Siguiente: [Referencia rápida y solución de problemas](Quick-reference-and-troubleshooting.md)
+🏠 [Home](Home.md) · ⬅️ Previous: [Line by line: guidance modes](Line-by-line-guidance-modes.md) · ➡️ Next: [Quick reference and troubleshooting](Quick-reference-and-troubleshooting.md)

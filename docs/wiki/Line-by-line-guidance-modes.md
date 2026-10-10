@@ -1,294 +1,293 @@
-# Análisis línea por línea: modos de guiado
+# Line by line: guidance modes
 
-Esta es la tercera de tres páginas que cubren, línea por línea, todos los
-archivos propios de `src/interceptor`. Empieza por
-[Archivos de proyecto y construcción](Line-by-line-project-and-build-files.md) si aún no
-la has leído: ahí está el glosario de sintaxis de C++ (`override`, `explicit`,
-`constexpr`, plantillas, referencias, `.cross()`/`.normalized()`...) que
-también hace falta aquí. La segunda página es
-[Nodos de odometría y tf2, línea por línea](Line-by-line-odometry-nodes.md).
+This is the third of three pages that go line by line through every file of
+our own in `src/interceptor`. Start with
+[Project and build files](Line-by-line-project-and-build-files.md) if you
+haven't read it yet: it has the C++ syntax glossary (`override`, `explicit`,
+`constexpr`, templates, references, `.cross()`/`.normalized()`...) that you'll
+also need here. The second page is
+[Odometry and tf2 nodes, line by line](Line-by-line-odometry-nodes.md).
 
-Esta página cubre `pursuit_mode.cpp` y `PN_mode.cpp`: los dos modos de vuelo
-que calculan un setpoint de trayectoria a partir de la posición (y, en PN, la
-velocidad) del target.
+This page covers `pursuit_mode.cpp` and `PN_mode.cpp`: the two flight modes
+that compute a trajectory setpoint from the target's position (and, in PN, its
+velocity).
 
 ## 1. `pursuit_mode.cpp`
 
-Archivo: [`pursuit_mode.cpp`](../../src/interceptor/src/pursuit_mode.cpp)
+File: [`pursuit_mode.cpp`](../../src/interceptor/src/pursuit_mode.cpp)
 
-| Línea | Código | Explicación |
+| Line | Code | Explanation |
 | ---: | --- | --- |
-| 1 | `#include <Eigen/Eigen>` | Trae vectores y operaciones de álgebra lineal (`Eigen::Vector3f`, `.norm()`, `.normalized()`...). |
-| 2 | `#include <geometry_msgs/msg/transform_stamped.hpp>` | Trae `TransformStamped`, el resultado de una consulta tf2. |
-| 3 | `#include <px4_ros2/components/mode.hpp>` | Trae `ModeBase`, la clase base de un modo de vuelo personalizado. |
-| 4 | `#include <px4_ros2/components/node_with_mode.hpp>` | Trae `NodeWithMode`, el envoltorio que registra el modo como nodo ROS 2. |
-| 5 | `#include <px4_ros2/control/setpoint_types/experimental/trajectory.hpp>` | Trae `TrajectorySetpointType`, usado para enviar velocidad/aceleración/yaw a PX4. |
-| 6 | `#include <px4_ros2/odometry/local_position.hpp>` | Trae `OdometryLocalPosition`, para leer la posición/velocidad propias. |
-| 7 | `#include <px4_ros2/utils/geometry.hpp>` | Utilidades geométricas de la librería `px4_ros2`. |
-| 8 | `#include <px4_ros_com/frame_transforms.h>` | Trae las funciones de conversión NED↔ENU. |
-| 9 | `#include <rclcpp/rclcpp.hpp>` | Trae `Node`, `init`, `spin`, logging. |
-| 10 | `#include <tf2/exceptions.h>` | Trae `tf2::TransformException`. |
-| 11 | `#include <tf2_ros/buffer.h>` | Trae `Buffer`, donde tf2 guarda las transformaciones. |
-| 12 | `#include <tf2_ros/transform_listener.h>` | Trae `TransformListener`, que llena ese buffer. |
-| 14 | `using namespace std::chrono_literals;  // NOLINT` | Permite escribir `50ms` como duración; el comentario `NOLINT` pide al linter que no avise por este `using namespace`. |
-| 16 | `static const std::string kName = "Pursuit Intercept";` | Nombre del modo tal como lo mostrará PX4. |
-| 17 | `static const std::string kMapFrame = "map";` | Nombre del frame padre usado en las consultas tf2. |
-| 19 | `class PursuitMode : public px4_ros2::ModeBase` | Declara la clase, heredando de `ModeBase`: así PX4 puede registrarla y llamar a sus métodos. |
-| 20 | `{` | Abre el cuerpo de la clase. |
-| 21 | `public:` | Lo siguiente es accesible desde fuera. |
-| 22 | `explicit PursuitMode(rclcpp::Node & node)` | Constructor que recibe una referencia al nodo ROS 2 que lo envuelve. |
-| 23 | `: ModeBase(node, Settings{kName})` | Inicializa la clase base con el nodo y el nombre del modo. |
-| 24 | `{` | Abre el cuerpo del constructor. |
-| 25 | `_trajectory_setpoint = std::make_shared<px4_ros2::TrajectorySetpointType>(*this);` | Crea el objeto que se usará para enviar los setpoints de trayectoria. |
-| 26 | `_own_position = std::make_shared<px4_ros2::OdometryLocalPosition>(*this);` | Crea el lector de la posición/velocidad propias del interceptor. |
-| 28 | `_target_frame = node.declare_parameter<std::string>("target_frame", "target/base_link");` | Declara el parámetro `target_frame` (por defecto `target/base_link`) y guarda su valor. |
-| 30 | `_tf_buffer = std::make_unique<tf2_ros::Buffer>(node.get_clock());` | Crea el buffer tf2, ligado al reloj del nodo. |
-| 31 | `_tf_listener = std::make_shared<tf2_ros::TransformListener>(*_tf_buffer);` | Crea el listener que llena ese buffer escuchando tf2. |
-| 33 | `_target_lookup_timer = node.create_wall_timer(50ms, [this] {updateTargetPosition();});` | Crea un timer que llama a `updateTargetPosition()` cada 50 ms. |
-| 34 | `}` | Cierra el constructor. |
-| 36 | `void onActivate() override {_target_reached = false;}` | Método que PX4 llama al activar el modo; reinicia `_target_reached` a `false` para que, si el modo se reactiva tras haber alcanzado el objetivo, pueda volver a avisar y llamar a `completed()` la próxima vez. |
-| 38 | `void checkArmingAndRunConditions(px4_ros2::HealthAndArmingCheckReporter & reporter) override` | Método que PX4 llama para decidir si el modo puede armarse; `override` confirma que sustituye al de `ModeBase`. |
-| 39 | `{` | Abre el cuerpo del método. |
-| 40 | `if (!_target_valid) {` | Si todavía no se ha recibido ninguna posición válida del target... |
-| 41-44 | `reporter.armingCheckFailureExt(px4_ros2::events::ID("pursuit_no_target"), px4_ros2::events::Log::Error, "No target odometry received yet");` | ...informa a PX4 de un fallo de armado, con un identificador y un mensaje de error. |
-| 45 | `}` | Cierra el `if`. |
-| 46 | `}` | Cierra `checkArmingAndRunConditions`. |
-| 48 | `void updateSetpoint(float dt_s) override` | Método que PX4 llama en cada ciclo del modo para pedir un nuevo setpoint. |
-| 49 | `{` | Abre el cuerpo del método. |
-| 50 | `(void)dt_s;` | Marca el parámetro `dt_s` como deliberadamente no usado (forma parte de la interfaz de `ModeBase`, pero este modo no lo necesita). |
-| 52 | `if (!_target_valid) {` | Si aún no hay posición válida del target... |
-| 53 | `RCLCPP_WARN(node().get_logger(), "Target position not valid yet. Skipping setpoint update.");` | ...registra un aviso... |
-| 54 | `return;` | ...y sale sin calcular ningún setpoint. |
-| 55 | `}` | Cierra el `if`. |
-| 57 | `const Eigen::Vector3f los = _target_position_ned - _own_position->positionNed();` | Calcula la línea de visión (LOS): posición del target menos posición propia, ambas en NED. |
-| 59 | `if (los.norm() < 1.0f) {` | Si la distancia al target es menor de 1 metro... |
-| 60 | `if (!_target_reached) {` | ...y todavía no se había registrado el alcance en este ciclo continuado dentro del metro (evita repetir el aviso y `completed()` mientras el interceptor se queda ahí)... |
-| 61 | `RCLCPP_INFO(node().get_logger(), "Target reached. Stopping pursuit.");` | ...registra que se alcanzó el objetivo... |
-| 62 | `completed(px4_ros2::Result::Success);` | ...avisa a PX4/la librería de que el modo terminó con éxito... |
-| 63 | `_target_reached = true;` | ...y marca que ya se avisó, para no repetirlo mientras se siga dentro del metro. |
-| 64 | `}` | Cierra el `if (!_target_reached)`. |
-| 65 | `return;` | Sale sin calcular más setpoints, se haya avisado o no en este ciclo. |
-| 66 | `}` | Cierra el `if (los.norm() < 1.0f)`. |
-| 67 | `_target_reached = false;` | Si la distancia ya no es menor de 1 m, limpia la marca: si el target se aleja y el interceptor vuelve a acercarse, el aviso y `completed()` pueden repetirse en el siguiente alcance. |
-| 69 | `const Eigen::Vector2f los_horizontal(los.x(), los.y());` | Toma solo las componentes X e Y de `los` (quita el eje vertical). |
-| 70 | `Eigen::Vector2f velocity_horizontal = Eigen::Vector2f::Zero();` | Empieza la velocidad horizontal en cero por si no se recalcula. |
-| 71 | `if (los_horizontal.norm() > kMinHorizontalDistance) {` | Si la distancia horizontal es mayor que el mínimo (`0.1 m`), para evitar normalizar un vector casi nulo... |
-| 72 | `velocity_horizontal = los_horizontal.normalized() * kMaxHorizontalSpeed;` | ...la velocidad horizontal apunta hacia el target a la velocidad máxima (`5 m/s`). |
-| 73 | `_last_yaw = atan2f(los_horizontal.y(), los_horizontal.x());` | Calcula el ángulo de rumbo (yaw) hacia el target y lo guarda como "último yaw válido". |
-| 74 | `}` | Cierra el `if`. |
-| 76 | `const float velocity_z = std::clamp(los.z(), -kMaxVerticalSpeed, kMaxVerticalSpeed);` | Limita la componente vertical de `los` entre `-2` y `2 m/s`: esa es la velocidad vertical pedida. |
-| 78 | `const Eigen::Vector3f velocity{velocity_horizontal.x(), velocity_horizontal.y(), velocity_z};` | Junta las tres componentes en un único vector de velocidad 3D. |
-| 80 | `_trajectory_setpoint->update(velocity, {}, _last_yaw);` | Envía el setpoint a PX4: velocidad calculada, sin aceleración (`{}`) y el yaw guardado. |
-| 81 | `}` | Cierra `updateSetpoint`. |
-| 83 | `private:` | Lo siguiente solo es accesible dentro de la clase. |
-| 84 | `void updateTargetPosition()` | Declara el método que el timer de la línea 33 llama cada 50 ms. |
-| 85 | `{` | Abre el cuerpo del método. |
-| 86 | `geometry_msgs::msg::TransformStamped t;` | Variable donde se guardará el resultado de la consulta tf2. |
-| 88 | `try {` | Empieza el bloque que puede fallar si el frame del target aún no existe. |
-| 89 | `t = _tf_buffer->lookupTransform(kMapFrame, _target_frame, tf2::TimePointZero);` | Pide la transformación `map -> target/base_link`, usando el último dato disponible. |
-| 90 | `} catch (const tf2::TransformException & ex) {` | Si falla (el frame no existe todavía), se captura aquí. |
-| 91-93 | `RCLCPP_WARN_THROTTLE(node().get_logger(), *node().get_clock(), 5000, "Could not transform %s to %s: %s", ...);` | Registra un aviso, pero como máximo uno cada 5000 ms (5 s), para no inundar el log. |
-| 94 | `return;` | Sale sin actualizar la posición del target. |
-| 95 | `}` | Cierra el bloque `catch`. |
-| 97-98 | `const Eigen::Vector3d position_enu(t.transform.translation.x, t.transform.translation.y, t.transform.translation.z);` | Arma un vector `double` con la traslación ENU recibida. |
-| 99-100 | `const Eigen::Vector3d position_ned = px4_ros_com::frame_transforms::enu_to_ned_local_frame(position_enu);` | Convierte esa posición de ENU a NED, para poder compararla con la odometría propia (que también está en NED). |
-| 102 | `_target_position_ned = position_ned.cast<float>();` | Guarda la posición convertida como `float` (el atributo está declarado así). |
-| 103 | `_target_valid = true;` | Marca que ya hay una posición válida del target; a partir de aquí `updateSetpoint` puede calcular. |
-| 104 | `}` | Cierra `updateTargetPosition`. |
-| 106 | `static constexpr float kMaxHorizontalSpeed = 5.0f;  // [m/s]` | Constante: velocidad horizontal máxima, 5 m/s. |
-| 107 | `static constexpr float kMaxVerticalSpeed = 2.0f;    // [m/s]` | Constante: velocidad vertical máxima, 2 m/s. |
-| 108 | `static constexpr float kMinHorizontalDistance = 0.1f;  // [m]` | Constante: distancia horizontal mínima para normalizar `los_horizontal`, 0.1 m. |
-| 110 | `std::shared_ptr<px4_ros2::TrajectorySetpointType> _trajectory_setpoint;` | Guarda el emisor de setpoints. |
-| 111 | `std::shared_ptr<px4_ros2::OdometryLocalPosition> _own_position;` | Guarda el lector de la posición/velocidad propias. |
-| 113 | `std::string _target_frame;` | Guarda el nombre del frame tf2 del target. |
-| 114 | `std::unique_ptr<tf2_ros::Buffer> _tf_buffer;` | Guarda el buffer tf2. |
-| 115 | `std::shared_ptr<tf2_ros::TransformListener> _tf_listener;` | Guarda el listener tf2. |
-| 116 | `rclcpp::TimerBase::SharedPtr _target_lookup_timer;` | Guarda el timer de 50 ms. |
-| 118 | `Eigen::Vector3f _target_position_ned{Eigen::Vector3f::Zero()};` | Última posición NED conocida del target, inicializada a cero. |
-| 119 | `bool _target_valid{false};` | Indica si ya se recibió al menos una posición válida del target. |
-| 120 | `bool _target_reached{false};` | Indica si el alcance del objetivo (LOS < 1 m) ya se registró en el ciclo actual; se reinicia en `onActivate()` y cada vez que la distancia vuelve a ser ≥ 1 m. |
-| 121 | `float _last_yaw{0.f};` | Último yaw calculado, para conservarlo cuando el target está casi encima. |
-| 122 | `};` | Cierra la clase `PursuitMode`. |
-| 124 | `using PursuitModeNode = px4_ros2::NodeWithMode<PursuitMode>;` | Define un alias: `PursuitModeNode` es "un `PursuitMode` envuelto como nodo ROS 2/PX4". |
-| 126 | `static const std::string kNodeName = "pursuit_mode";` | Nombre del ejecutable/nodo que verá ROS 2. |
-| 127 | `static const bool kEnableDebugOutput = true;` | Activa salida de depuración adicional de la librería `px4_ros2`. |
-| 129 | `int main(int argc, char * argv[])` | Punto de entrada del programa. |
-| 130 | `{` | Abre `main`. |
-| 131 | `rclcpp::init(argc, argv);` | Inicializa ROS 2. |
-| 132 | `rclcpp::spin(std::make_shared<PursuitModeNode>(kNodeName, kEnableDebugOutput));` | Crea el nodo con ese nombre y esa opción de depuración, y lo mantiene vivo procesando eventos (timer, `checkArmingAndRunConditions`, `updateSetpoint`...). |
-| 133 | `rclcpp::shutdown();` | Libera los recursos de ROS 2 al terminar `spin`. |
-| 134 | `return 0;` | Fin sin errores. |
-| 135 | `}` | Cierra `main`. |
+| 1 | `#include <Eigen/Eigen>` | Brings vectors and linear algebra operations (`Eigen::Vector3f`, `.norm()`, `.normalized()`...). |
+| 2 | `#include <geometry_msgs/msg/transform_stamped.hpp>` | Brings `TransformStamped`, the result of a tf2 lookup. |
+| 3 | `#include <px4_ros2/components/mode.hpp>` | Brings `ModeBase`, the base class of a custom flight mode. |
+| 4 | `#include <px4_ros2/components/node_with_mode.hpp>` | Brings `NodeWithMode`, the wrapper that registers the mode as a ROS 2 node. |
+| 5 | `#include <px4_ros2/control/setpoint_types/experimental/trajectory.hpp>` | Brings `TrajectorySetpointType`, used to send velocity/acceleration/yaw to PX4. |
+| 6 | `#include <px4_ros2/odometry/local_position.hpp>` | Brings `OdometryLocalPosition`, to read our own position/velocity. |
+| 7 | `#include <px4_ros2/utils/geometry.hpp>` | Geometry utilities from the `px4_ros2` library. |
+| 8 | `#include <px4_ros_com/frame_transforms.h>` | Brings the NED↔ENU conversion functions. |
+| 9 | `#include <rclcpp/rclcpp.hpp>` | Brings `Node`, `init`, `spin`, logging. |
+| 10 | `#include <tf2/exceptions.h>` | Brings `tf2::TransformException`. |
+| 11 | `#include <tf2_ros/buffer.h>` | Brings `Buffer`, where tf2 stores the transforms. |
+| 12 | `#include <tf2_ros/transform_listener.h>` | Brings `TransformListener`, which fills that buffer. |
+| 14 | `using namespace std::chrono_literals; // NOLINT` | Lets you write `50ms` as a duration; the `NOLINT` comment asks the linter not to complain about this `using namespace`. |
+| 16 | `static const std::string kName = "Pursuit Intercept";` | Name of the mode as PX4 will show it. |
+| 17 | `static const std::string kMapFrame = "map";` | Name of the parent frame used in tf2 lookups. |
+| 19 | `class PursuitMode : public px4_ros2::ModeBase` | Declares the class, inheriting from `ModeBase`, so PX4 can register it and call its methods. |
+| 20 | `{` | Opens the class body. |
+| 21 | `public:` | What follows is accessible from outside. |
+| 22 | `explicit PursuitMode(rclcpp::Node & node)` | Constructor that takes a reference to the ROS 2 node that wraps it. |
+| 23 | `: ModeBase(node, Settings{kName})` | Initialises the base class with the node and the mode name. |
+| 24 | `{` | Opens the constructor body. |
+| 25 | `_trajectory_setpoint = std::make_shared<px4_ros2::TrajectorySetpointType>(*this);` | Creates the object used to send trajectory setpoints. |
+| 26 | `_own_position = std::make_shared<px4_ros2::OdometryLocalPosition>(*this);` | Creates the reader of the interceptor's own position/velocity. |
+| 28 | `_target_frame = node.declare_parameter<std::string>("target_frame", "target/base_link");` | Declares the `target_frame` parameter (default `target/base_link`) and stores its value. |
+| 30 | `_tf_buffer = std::make_unique<tf2_ros::Buffer>(node.get_clock());` | Creates the tf2 buffer, tied to the node's clock. |
+| 31 | `_tf_listener = std::make_shared<tf2_ros::TransformListener>(*_tf_buffer);` | Creates the listener that fills that buffer by listening to tf2. |
+| 33 | `_target_lookup_timer = node.create_wall_timer(50ms, [this] {updateTargetPosition();});` | Creates a timer that calls `updateTargetPosition()` every 50 ms. |
+| 34 | `}` | Closes the constructor. |
+| 36 | `void onActivate() override {_target_reached = false;}` | Method PX4 calls when the mode is activated; resets `_target_reached` to `false` so that, if the mode is activated again after reaching the target, it can report and call `completed()` again next time. |
+| 38 | `void checkArmingAndRunConditions(px4_ros2::HealthAndArmingCheckReporter & reporter) override` | Method PX4 calls to decide whether the mode can arm; `override` confirms it replaces the one in `ModeBase`. |
+| 39 | `{` | Opens the method body. |
+| 40 | `if (!_target_valid) {` | If no valid target position has been received yet... |
+| 41-44 | `reporter.armingCheckFailureExt(px4_ros2::events::ID("pursuit_no_target"), px4_ros2::events::Log::Error, "No target odometry received yet");` | ...reports an arming failure to PX4, with an identifier and an error message. |
+| 45 | `}` | Closes the `if`. |
+| 46 | `}` | Closes `checkArmingAndRunConditions`. |
+| 48 | `void updateSetpoint(float dt_s) override` | Method PX4 calls on every cycle of the mode to ask for a new setpoint. |
+| 49 | `{` | Opens the method body. |
+| 50 | `(void)dt_s;` | Marks the `dt_s` parameter as deliberately unused (it's part of the `ModeBase` interface, but this mode doesn't need it). |
+| 52 | `if (!_target_valid) {` | If there's no valid target position yet... |
+| 53 | `RCLCPP_WARN(node().get_logger(), "Target position not valid yet. Skipping setpoint update.");` | ...logs a warning... |
+| 54 | `return;` | ...and returns without computing any setpoint. |
+| 55 | `}` | Closes the `if`. |
+| 57 | `const Eigen::Vector3f los = _target_position_ned - _own_position->positionNed();` | Computes the line of sight (LOS): target position minus own position, both in NED. |
+| 59 | `if (los.norm() < 1.0f) {` | If the distance to the target is less than 1 metre... |
+| 60 | `if (!_target_reached) {` | ...and the reach hasn't been recorded yet during this stretch within the metre (avoids repeating the message and `completed()` while the interceptor stays there)... |
+| 61 | `RCLCPP_INFO(node().get_logger(), "Target reached. Stopping pursuit.");` | ...logs that the target was reached... |
+| 62 | `completed(px4_ros2::Result::Success);` | ...tells PX4/the library that the mode finished successfully... |
+| 63 | `_target_reached = true;` | ...and records that it has reported it, so it isn't repeated while still within the metre. |
+| 64 | `}` | Closes the `if (!_target_reached)`. |
+| 65 | `return;` | Returns without computing more setpoints, whether or not it reported in this cycle. |
+| 66 | `}` | Closes the `if (los.norm() < 1.0f)`. |
+| 67 | `_target_reached = false;` | If the distance is no longer below 1 m, clears the flag: if the target moves away and the interceptor closes in again, the message and `completed()` can happen again on the next reach. |
+| 69 | `const Eigen::Vector2f los_horizontal(los.x(), los.y());` | Takes only the X and Y components of `los` (drops the vertical axis). |
+| 70 | `Eigen::Vector2f velocity_horizontal = Eigen::Vector2f::Zero();` | Starts the horizontal velocity at zero in case it isn't recomputed. |
+| 71 | `if (los_horizontal.norm() > kMinHorizontalDistance) {` | If the horizontal distance is above the minimum (`0.1 m`), to avoid normalising an almost zero vector... |
+| 72 | `velocity_horizontal = los_horizontal.normalized() * kMaxHorizontalSpeed;` | ...the horizontal velocity points at the target at the maximum speed (`5 m/s`). |
+| 73 | `_last_yaw = atan2f(los_horizontal.y(), los_horizontal.x());` | Computes the heading angle (yaw) towards the target and stores it as the "last valid yaw". |
+| 74 | `}` | Closes the `if`. |
+| 76 | `const float velocity_z = std::clamp(los.z(), -kMaxVerticalSpeed, kMaxVerticalSpeed);` | Limits the vertical component of `los` to between `-2` and `2 m/s`: that's the requested vertical speed. |
+| 78 | `const Eigen::Vector3f velocity{velocity_horizontal.x(), velocity_horizontal.y(), velocity_z};` | Puts the three components together in a single 3D velocity vector. |
+| 80 | `_trajectory_setpoint->update(velocity, {}, _last_yaw);` | Sends the setpoint to PX4: the computed velocity, no acceleration (`{}`) and the stored yaw. |
+| 81 | `}` | Closes `updateSetpoint`. |
+| 83 | `private:` | What follows is only accessible inside the class. |
+| 84 | `void updateTargetPosition()` | Declares the method the timer of line 33 calls every 50 ms. |
+| 85 | `{` | Opens the method body. |
+| 86 | `geometry_msgs::msg::TransformStamped t;` | Variable that will hold the tf2 lookup result. |
+| 88 | `try {` | Starts the block that may fail if the target frame doesn't exist yet. |
+| 89 | `t = _tf_buffer->lookupTransform(kMapFrame, _target_frame, tf2::TimePointZero);` | Asks for the `map -> target/base_link` transform, using the latest available data. |
+| 90 | `} catch (const tf2::TransformException & ex) {` | If it fails (the frame doesn't exist yet), it's caught here. |
+| 91-93 | `RCLCPP_WARN_THROTTLE(node().get_logger(), *node().get_clock(), 5000, "Could not transform %s to %s: %s", ...);` | Logs a warning, but at most once every 5000 ms (5 s), so the log isn't flooded. |
+| 94 | `return;` | Returns without updating the target position. |
+| 95 | `}` | Closes the `catch` block. |
+| 97-98 | `const Eigen::Vector3d position_enu(t.transform.translation.x, t.transform.translation.y, t.transform.translation.z);` | Builds a `double` vector with the received ENU translation. |
+| 99-100 | `const Eigen::Vector3d position_ned = px4_ros_com::frame_transforms::enu_to_ned_local_frame(position_enu);` | Converts that position from ENU to NED, so it can be compared with our own odometry (also in NED). |
+| 102 | `_target_position_ned = position_ned.cast<float>();` | Stores the converted position as `float` (that's how the member is declared). |
+| 103 | `_target_valid = true;` | Records that there is a valid target position; from here on `updateSetpoint` can compute. |
+| 104 | `}` | Closes `updateTargetPosition`. |
+| 106 | `static constexpr float kMaxHorizontalSpeed = 5.0f; // [m/s]` | Constant: maximum horizontal speed, 5 m/s. |
+| 107 | `static constexpr float kMaxVerticalSpeed = 2.0f; // [m/s]` | Constant: maximum vertical speed, 2 m/s. |
+| 108 | `static constexpr float kMinHorizontalDistance = 0.1f; // [m]` | Constant: minimum horizontal distance to normalise `los_horizontal`, 0.1 m. |
+| 110 | `std::shared_ptr<px4_ros2::TrajectorySetpointType> _trajectory_setpoint;` | Stores the setpoint sender. |
+| 111 | `std::shared_ptr<px4_ros2::OdometryLocalPosition> _own_position;` | Stores the reader of our own position/velocity. |
+| 113 | `std::string _target_frame;` | Stores the name of the target's tf2 frame. |
+| 114 | `std::unique_ptr<tf2_ros::Buffer> _tf_buffer;` | Stores the tf2 buffer. |
+| 115 | `std::shared_ptr<tf2_ros::TransformListener> _tf_listener;` | Stores the tf2 listener. |
+| 116 | `rclcpp::TimerBase::SharedPtr _target_lookup_timer;` | Stores the 50 ms timer. |
+| 118 | `Eigen::Vector3f _target_position_ned{Eigen::Vector3f::Zero()};` | Last known NED position of the target, initialised to zero. |
+| 119 | `bool _target_valid{false};` | Whether at least one valid target position has been received. |
+| 120 | `bool _target_reached{false};` | Whether the reach (LOS < 1 m) has already been recorded in the current stretch; reset in `onActivate()` and whenever the distance is ≥ 1 m again. |
+| 121 | `float _last_yaw{0.f};` | Last computed yaw, kept when the target is almost directly above. |
+| 122 | `};` | Closes the `PursuitMode` class. |
+| 124 | `using PursuitModeNode = px4_ros2::NodeWithMode<PursuitMode>;` | Defines an alias: `PursuitModeNode` is "a `PursuitMode` wrapped as a ROS 2/PX4 node". |
+| 126 | `static const std::string kNodeName = "pursuit_mode";` | Name of the executable/node ROS 2 will see. |
+| 127 | `static const bool kEnableDebugOutput = true;` | Turns on extra debug output from the `px4_ros2` library. |
+| 129 | `int main(int argc, char * argv[])` | Program entry point. |
+| 130 | `{` | Opens `main`. |
+| 131 | `rclcpp::init(argc, argv);` | Initialises ROS 2. |
+| 132 | `rclcpp::spin(std::make_shared<PursuitModeNode>(kNodeName, kEnableDebugOutput));` | Creates the node with that name and debug option, and keeps it alive processing events (timer, `checkArmingAndRunConditions`, `updateSetpoint`...). |
+| 133 | `rclcpp::shutdown();` | Releases the ROS 2 resources when `spin` returns. |
+| 134 | `return 0;` | Ends without errors. |
+| 135 | `}` | Closes `main`. |
 
 ## 2. `PN_mode.cpp`
 
-Archivo: [`PN_mode.cpp`](../../src/interceptor/src/PN_mode.cpp)
+File: [`PN_mode.cpp`](../../src/interceptor/src/PN_mode.cpp)
 
-`PN_mode.cpp` comparte casi toda la estructura de `pursuit_mode.cpp` (mismos
-includes, mismo patrón de constructor, mismo ciclo de vida). La tabla marca
-con **★** las líneas que no tienen equivalente en `pursuit_mode.cpp`.
+`PN_mode.cpp` shares almost all of `pursuit_mode.cpp`'s structure (same
+includes, same constructor pattern, same life cycle). The table marks with
+**★** the lines that have no equivalent in `pursuit_mode.cpp`.
 
-| Línea | Código | Explicación |
+| Line | Code | Explanation |
 | ---: | --- | --- |
-| 1-10 | Comentario Doxygen `/** ... */` | Documenta que este archivo implementa Proportional Navigation (PN). |
-| 12-23 | Mismos `#include` que `pursuit_mode.cpp` (líneas 1-12) | Idénticos, mismo propósito. |
-| 24 | ★ `#include <geometry_msgs/msg/twist_stamped.hpp>` | Extra: trae `TwistStamped`, necesario porque PN sí necesita la velocidad del target. |
-| 26 | `using namespace std::chrono_literals;  // NOLINT` | Igual que en Pursuit. |
-| 28 | `static const std::string kName = "PN mode";` | Nombre del modo mostrado por PX4 (distinto texto que Pursuit). |
-| 29 | `static const std::string kMapFrame = "map";` | Igual que en Pursuit. |
-| 31 | `class PN_Mode : public px4_ros2::ModeBase` | Declara la clase `PN_Mode` (nombre distinto de `PursuitMode`), misma clase base. |
-| 32 | `{` | Abre el cuerpo. |
-| 33 | `public:` | Igual. |
-| 34 | `explicit PN_Mode(rclcpp::Node & node)` | Constructor, igual patrón que Pursuit. |
-| 35 | `: ModeBase(node, Settings{kName})` | Igual. |
-| 36 | `{` | Abre el constructor. |
-| 37 | `_trajectory_setpoint = std::make_shared<px4_ros2::TrajectorySetpointType>(*this);` | Igual que en Pursuit. |
-| 38 | `_own_position = std::make_shared<px4_ros2::OdometryLocalPosition>(*this);` | Igual. |
-| 40 | `_target_frame = node.declare_parameter<std::string>("target_frame", "target/base_link");` | Igual. |
-| 41 | `_target_lookup_timer = node.create_wall_timer(50ms, [this] {updateTargetPosition();});` | Igual, aunque aquí aparece antes en el archivo que en Pursuit; el orden de estas líneas no cambia su comportamiento. |
-| 42-43 | ★ `_target_velocity_topic = node.declare_parameter<std::string>("target_velocity_topic", "target/velocity");` | Extra: declara el parámetro del tópico de velocidad, por defecto `target/velocity`. |
-| 45 | ★ `// Subscribe to the target's velocity topic. ENU to NED conversion is done in the callback.` | Comentario explicativo. |
-| 46-47 | ★ `_target_velocity_sub = node.create_subscription<geometry_msgs::msg::TwistStamped>(_target_velocity_topic, 10,` | Extra: crea la suscripción a `target/velocity`, con cola de 10 mensajes. |
-| 48 | ★ `[this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {` | Lambda ejecutada con cada mensaje de velocidad recibido. |
-| 49 | ★ `using px4_ros_com::frame_transforms::enu_to_ned_local_frame;` | Acorta el nombre de la función de conversión. |
-| 51 | ★ `// Convert the received ENU velocity to NED frame` | Comentario explicativo. |
-| 52-53 | ★ `Eigen::Vector3d velocity_enu(msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z);` | Arma un vector `double` con la velocidad lineal ENU del mensaje `TwistStamped`. |
-| 54 | ★ `Eigen::Vector3d velocity_ned = enu_to_ned_local_frame(velocity_enu);` | Convierte esa velocidad a NED. |
-| 56 | ★ `_target_velocity_ned = velocity_ned.cast<float>(); // .cast to convert from double to float` | Guarda la velocidad convertida como `float`. |
-| 58 | ★ `_target_velocity_valid = true;` | Marca que ya se recibió al menos una velocidad válida del target. |
-| 59 | ★ `});` | Cierra la lambda y `create_subscription`. |
-| 61 | `_tf_buffer = std::make_unique<tf2_ros::Buffer>(node.get_clock());` | Igual que en Pursuit. |
-| 62 | `_tf_listener = std::make_shared<tf2_ros::TransformListener>(*_tf_buffer);` | Igual. |
-| 64 | `}` | Cierra el constructor. |
-| 66 | `void onActivate() override {_target_reached = false;}` | Mismo método que en Pursuit (línea 36 de esa tabla): reinicia `_target_reached` al activar el modo. |
-| 68 | ★ `// Safety checks` | Comentario que introduce `checkArmingAndRunConditions`; no tiene equivalente textual en Pursuit. |
-| 69 | `void checkArmingAndRunConditions(px4_ros2::HealthAndArmingCheckReporter & reporter) override` | Mismo método que en Pursuit. |
-| 70 | `{` | Abre el cuerpo. |
-| 71 | ★ `if (!_target_valid \|\| !_target_velocity_valid) {` | **Diferencia clave**: aquí se exige posición *y* velocidad válidas (el `\|\|` es el operador "o" de C++ entre ambas negaciones); Pursuit solo exige posición. |
-| 72-75 | `reporter.armingCheckFailureExt(...)` | Igual que en Pursuit, mismo mensaje de error (el texto no menciona la velocidad aunque la condición sí la comprueba). |
-| 76 | `}` | Cierra el `if`. |
-| 77 | `}` | Cierra el método. |
-| 79 | ★ `// PN main logic` | Comentario que introduce `updateSetpoint`; sin equivalente en Pursuit. |
-| 80 | `void updateSetpoint(float dt_s) override` | Igual firma que en Pursuit. |
-| 81 | `{` | Abre el cuerpo. |
-| 82 | `(void)dt_s;` | Igual: parámetro no usado. |
-| 84-87 | `if (!_target_valid) { RCLCPP_WARN(...); return; }` | Igual que en Pursuit. |
-| 89 | `const Eigen::Vector3f los = _target_position_ned - _own_position->positionNed();` | Igual que en Pursuit: línea de visión. |
-| 90 | ★ `const Eigen::Vector3f v_rel = _target_velocity_ned - _own_position->velocityNed();` | Extra: velocidad relativa = velocidad del target menos velocidad propia. |
-| 92 | `if (los.norm() < 1.0f) {` | Igual que en Pursuit (línea 59 de esa tabla): si la distancia al target es menor de 1 metro... |
-| 93 | `if (!_target_reached) {` | Igual que en Pursuit (línea 60): evita repetir el aviso y `completed()` en cada ciclo mientras se sigue dentro del metro. |
-| 94 | `RCLCPP_INFO(node().get_logger(), "Target reached. Stopping pursuit.");` | Igual que en Pursuit (línea 61). |
-| 95 | `completed(px4_ros2::Result::Success);` | Igual que en Pursuit (línea 62). |
-| 96 | `_target_reached = true;` | Igual que en Pursuit (línea 63). |
-| 97 | `}` | Cierra el `if (!_target_reached)`. |
-| 98 | `return;` | Igual que en Pursuit (línea 65). |
-| 99 | `}` | Cierra el `if (los.norm() < 1.0f)`. |
-| 100 | `_target_reached = false;` | Igual que en Pursuit (línea 67): limpia la marca si la distancia vuelve a ser ≥ 1 m. |
-| 102 | ★ `Eigen::Vector3f a_cmd = Eigen::Vector3f::Zero();` | Extra: la aceleración de navegación empieza en cero. |
-| 105 | ★ `if (los.norm() < kPnMinRange) {` | Si la distancia es menor que `kPnMinRange` (7 m)... |
-| 106 | ★ `a_cmd = Eigen::Vector3f::Zero();` | ...no se aplica aceleración PN (demasiado cerca para que la fórmula sea fiable). |
-| 107 | ★ `} else {` | Si la distancia es mayor o igual a `kPnMinRange`... |
-| 108 | ★ `// LOS rotation rate ω = (los × v_rel) / (los · los)` | Comentario que explica la fórmula de la siguiente línea. |
-| 109 | ★ `const Eigen::Vector3f los_rotation_rate = los.cross(v_rel) / (los.squaredNorm() + 1e-6f);` | Calcula ω, la velocidad de giro de la línea de visión; el `1e-6f` evita dividir exactamente por cero. |
-| 110 | ★ `a_cmd = kNavigationConstant * los_rotation_rate.cross(v_rel);` | Aplica la fórmula de navegación proporcional: aceleración proporcional a ω × velocidad relativa. |
-| 111 | ★ `const float a_cmd_norm = a_cmd.norm();` | Calcula el tamaño de esa aceleración. |
-| 113 | ★ `if (a_cmd_norm > 1e-6f) {` | Si la aceleración calculada no es prácticamente cero... |
-| 114 | ★ `a_cmd = a_cmd.normalized() * std::min(a_cmd_norm, kMaxAcceleration);` | ...se normaliza y se limita a `kMaxAcceleration` (3 m/s²) como máximo. |
-| 115 | ★ `} else {` | Si es prácticamente cero... |
-| 116 | ★ `a_cmd = Eigen::Vector3f::Zero();` | ...se deja en cero exacto (evita normalizar un vector casi nulo). |
-| 117 | ★ `}` | Cierra el `if`/`else` interior. |
-| 118 | ★ `}` | Cierra el `if`/`else` de `kPnMinRange`. |
-| 120-125 | `los_horizontal`, `velocity_horizontal`, `_last_yaw = atan2f(...)` | Igual patrón que en Pursuit para la velocidad de persecución horizontal. |
-| 127 | `const float velocity_z = std::clamp(los.z(), -kMaxVerticalSpeed, kMaxVerticalSpeed);` | Igual que en Pursuit. |
-| 129 | `const Eigen::Vector3f velocity{velocity_horizontal.x(), velocity_horizontal.y(), velocity_z};` | Igual que en Pursuit. |
-| 131 | ★ `_trajectory_setpoint->update(velocity, a_cmd, _last_yaw);` | **Diferencia clave**: aquí sí se envía `a_cmd` (Pursuit envía `{}`, sin aceleración). |
-| 132 | `}` | Cierra `updateSetpoint`. |
-| 134 | `private:` | Igual que en Pursuit (línea 83 de esa tabla): lo siguiente solo es accesible dentro de la clase. |
-| 135-155 | `updateTargetPosition()` completo | Idéntico línea por línea al de `pursuit_mode.cpp` (líneas 84-104 de esa tabla): mismo `lookupTransform`, mismo `catch`, misma conversión ENU→NED. |
-| 157 | `static constexpr float kMaxHorizontalSpeed = 7.0f;  // [m/s]` | **Valor distinto**: 7 m/s en vez de 5 m/s. |
-| 158 | `static constexpr float kMaxVerticalSpeed = 2.0f;    // [m/s]` | Igual valor que en Pursuit. |
-| 159 | `static constexpr float kMinHorizontalDistance = 0.1f;  // [m]` | Igual valor que en Pursuit. |
-| 161 | ★ `static constexpr float kNavigationConstant = 3.5f;  // Proportional navigation constant (N/lambda)` | Extra: ganancia de la navegación proporcional. |
-| 162 | ★ `static constexpr float kMaxAcceleration = 3.0f;  // [m/s^2]` | Extra: aceleración máxima permitida. |
-| 163 | ★ `static constexpr float kPnMinRange = 7.0f;  // [m] Minimum range for PN to be active` | Extra: distancia mínima para activar la aceleración PN. |
-| 165-171 | Miembros `_trajectory_setpoint`, `_own_position`, `_target_frame`, `_tf_buffer`, `_tf_listener`, `_target_lookup_timer` | Idénticos a los de Pursuit. |
-| 173 | `Eigen::Vector3f _target_position_ned{Eigen::Vector3f::Zero()};` | Igual que en Pursuit. |
-| 174 | ★ `Eigen::Vector3f _target_velocity_ned{Eigen::Vector3f::Zero()};` | Extra: última velocidad NED conocida del target. |
-| 175 | ★ `std::string _target_velocity_topic;` | Extra: nombre del tópico de velocidad. |
-| 176 | ★ `rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr _target_velocity_sub;` | Extra: guarda la suscripción de velocidad. |
-| 178 | ★ `bool _target_velocity_valid{false};` | Extra: indica si ya llegó una velocidad válida del target. |
-| 179 | `bool _target_valid{false};` | Igual que en Pursuit. |
-| 180 | `bool _target_reached{false};` | Igual que en Pursuit (línea 120 de esa tabla): si el alcance ya se registró en el ciclo actual. |
-| 181 | `float _last_yaw{0.f};` | Igual que en Pursuit. |
-| 182 | `};` | Cierra la clase `PN_Mode`. |
-| 184 | `using PN_ModeNode = px4_ros2::NodeWithMode<PN_Mode>;` | Mismo patrón que `PursuitModeNode`, para esta clase. |
-| 186 | `static const std::string kNodeName = "PN_mode";` | Nombre distinto de ejecutable/nodo. |
-| 187 | `static const bool kEnableDebugOutput = true;` | Igual que en Pursuit. |
-| 189-195 | `main` completo | Idéntico patrón a `pursuit_mode.cpp` (líneas 129-135 de esa tabla), usando `PN_ModeNode` en vez de `PursuitModeNode`. |
+| 1-10 | Doxygen comment `/** ... */` | Documents that this file implements Proportional Navigation (PN). |
+| 12-23 | Same `#include` lines as `pursuit_mode.cpp` (lines 1-12) | Identical, same purpose. |
+| 24 | ★ `#include <geometry_msgs/msg/twist_stamped.hpp>` | Extra: brings `TwistStamped`, needed because PN does need the target's velocity. |
+| 26 | `using namespace std::chrono_literals; // NOLINT` | Same as in Pursuit. |
+| 28 | `static const std::string kName = "PN mode";` | Name of the mode shown by PX4 (different text from Pursuit). |
+| 29 | `static const std::string kMapFrame = "map";` | Same as in Pursuit. |
+| 31 | `class PN_Mode : public px4_ros2::ModeBase` | Declares the `PN_Mode` class (a different name from `PursuitMode`), same base class. |
+| 32 | `{` | Opens the body. |
+| 33 | `public:` | Same. |
+| 34 | `explicit PN_Mode(rclcpp::Node & node)` | Constructor, same pattern as Pursuit. |
+| 35 | `: ModeBase(node, Settings{kName})` | Same. |
+| 36 | `{` | Opens the constructor. |
+| 37 | `_trajectory_setpoint = std::make_shared<px4_ros2::TrajectorySetpointType>(*this);` | Same as in Pursuit. |
+| 38 | `_own_position = std::make_shared<px4_ros2::OdometryLocalPosition>(*this);` | Same. |
+| 40 | `_target_frame = node.declare_parameter<std::string>("target_frame", "target/base_link");` | Same. |
+| 41 | `_target_lookup_timer = node.create_wall_timer(50ms, [this] {updateTargetPosition();});` | Same, although here it comes earlier in the file than in Pursuit; the order of these lines doesn't change the behaviour. |
+| 42-43 | ★ `_target_velocity_topic = node.declare_parameter<std::string>("target_velocity_topic", "target/velocity");` | Extra: declares the velocity topic parameter, default `target/velocity`. |
+| 45 | ★ `// Subscribe to the target's velocity topic. ENU to NED conversion is done in the callback.` | Explanatory comment. |
+| 46-47 | ★ `_target_velocity_sub = node.create_subscription<geometry_msgs::msg::TwistStamped>(_target_velocity_topic, 10,` | Extra: creates the subscription to `target/velocity`, with a queue of 10 messages. |
+| 48 | ★ `[this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {` | Lambda run for every received velocity message. |
+| 49 | ★ `using px4_ros_com::frame_transforms::enu_to_ned_local_frame;` | Shortens the name of the conversion function. |
+| 51 | ★ `// Convert the received ENU velocity to NED frame` | Explanatory comment. |
+| 52-53 | ★ `Eigen::Vector3d velocity_enu(msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z);` | Builds a `double` vector with the ENU linear velocity of the `TwistStamped` message. |
+| 54 | ★ `Eigen::Vector3d velocity_ned = enu_to_ned_local_frame(velocity_enu);` | Converts that velocity to NED. |
+| 56 | ★ `_target_velocity_ned = velocity_ned.cast<float>(); // .cast to convert from double to float` | Stores the converted velocity as `float`. |
+| 58 | ★ `_target_velocity_valid = true;` | Records that at least one valid target velocity has been received. |
+| 59 | ★ `});` | Closes the lambda and `create_subscription`. |
+| 61 | `_tf_buffer = std::make_unique<tf2_ros::Buffer>(node.get_clock());` | Same as in Pursuit. |
+| 62 | `_tf_listener = std::make_shared<tf2_ros::TransformListener>(*_tf_buffer);` | Same. |
+| 64 | `}` | Closes the constructor. |
+| 66 | `void onActivate() override {_target_reached = false;}` | Same method as in Pursuit (line 36 of that table): resets `_target_reached` when the mode is activated. |
+| 68 | ★ `// Safety checks` | Comment introducing `checkArmingAndRunConditions`; it has no textual equivalent in Pursuit. |
+| 69 | `void checkArmingAndRunConditions(px4_ros2::HealthAndArmingCheckReporter & reporter) override` | Same method as in Pursuit. |
+| 70 | `{` | Opens the body. |
+| 71 | ★ `if (!_target_valid \|\| !_target_velocity_valid) {` | **Key difference**: here both a valid position *and* a valid velocity are required (`\|\|` is C++'s "or" between the two negations); Pursuit only requires the position. |
+| 72-75 | `reporter.armingCheckFailureExt(...)` | Same as in Pursuit, same error message (the text doesn't mention the velocity even though the condition checks it). |
+| 76 | `}` | Closes the `if`. |
+| 77 | `}` | Closes the method. |
+| 79 | ★ `// PN main logic` | Comment introducing `updateSetpoint`; no equivalent in Pursuit. |
+| 80 | `void updateSetpoint(float dt_s) override` | Same signature as in Pursuit. |
+| 81 | `{` | Opens the body. |
+| 82 | `(void)dt_s;` | Same: unused parameter. |
+| 84-87 | `if (!_target_valid) { RCLCPP_WARN(...); return; }` | Same as in Pursuit. |
+| 89 | `const Eigen::Vector3f los = _target_position_ned - _own_position->positionNed();` | Same as in Pursuit: line of sight. |
+| 90 | ★ `const Eigen::Vector3f v_rel = _target_velocity_ned - _own_position->velocityNed();` | Extra: relative velocity = target velocity minus own velocity. |
+| 92 | `if (los.norm() < 1.0f) {` | Same as in Pursuit (line 59 of that table): if the distance to the target is less than 1 metre... |
+| 93 | `if (!_target_reached) {` | Same as in Pursuit (line 60): avoids repeating the message and `completed()` on every cycle while still within the metre. |
+| 94 | `RCLCPP_INFO(node().get_logger(), "Target reached. Stopping pursuit.");` | Same as in Pursuit (line 61). |
+| 95 | `completed(px4_ros2::Result::Success);` | Same as in Pursuit (line 62). |
+| 96 | `_target_reached = true;` | Same as in Pursuit (line 63). |
+| 97 | `}` | Closes the `if (!_target_reached)`. |
+| 98 | `return;` | Same as in Pursuit (line 65). |
+| 99 | `}` | Closes the `if (los.norm() < 1.0f)`. |
+| 100 | `_target_reached = false;` | Same as in Pursuit (line 67): clears the flag if the distance is ≥ 1 m again. |
+| 102 | ★ `Eigen::Vector3f a_cmd = Eigen::Vector3f::Zero();` | Extra: the navigation acceleration starts at zero. |
+| 105 | ★ `if (los.norm() < kPnMinRange) {` | If the distance is below `kPnMinRange` (7 m)... |
+| 106 | ★ `a_cmd = Eigen::Vector3f::Zero();` | ...no PN acceleration is applied (too close for the formula to be reliable). |
+| 107 | ★ `} else {` | If the distance is greater than or equal to `kPnMinRange`... |
+| 108 | ★ `// LOS rotation rate ω = (los × v_rel) / (los · los)` | Comment explaining the formula on the next line. |
+| 109 | ★ `const Eigen::Vector3f los_rotation_rate = los.cross(v_rel) / (los.squaredNorm() + 1e-6f);` | Computes ω, the rotation rate of the line of sight; the `1e-6f` avoids dividing by exactly zero. |
+| 110 | ★ `a_cmd = kNavigationConstant * los_rotation_rate.cross(v_rel);` | Applies the proportional navigation formula: acceleration proportional to ω × relative velocity. |
+| 111 | ★ `const float a_cmd_norm = a_cmd.norm();` | Computes the size of that acceleration. |
+| 113 | ★ `if (a_cmd_norm > 1e-6f) {` | If the computed acceleration isn't practically zero... |
+| 114 | ★ `a_cmd = a_cmd.normalized() * std::min(a_cmd_norm, kMaxAcceleration);` | ...it's normalised and capped at `kMaxAcceleration` (3 m/s²). |
+| 115 | ★ `} else {` | If it is practically zero... |
+| 116 | ★ `a_cmd = Eigen::Vector3f::Zero();` | ...it's set to exactly zero (avoids normalising an almost zero vector). |
+| 117 | ★ `}` | Closes the inner `if`/`else`. |
+| 118 | ★ `}` | Closes the `kPnMinRange` `if`/`else`. |
+| 120-125 | `los_horizontal`, `velocity_horizontal`, `_last_yaw = atan2f(...)` | Same pattern as in Pursuit for the horizontal pursuit velocity. |
+| 127 | `const float velocity_z = std::clamp(los.z(), -kMaxVerticalSpeed, kMaxVerticalSpeed);` | Same as in Pursuit. |
+| 129 | `const Eigen::Vector3f velocity{velocity_horizontal.x(), velocity_horizontal.y(), velocity_z};` | Same as in Pursuit. |
+| 131 | ★ `_trajectory_setpoint->update(velocity, a_cmd, _last_yaw);` | **Key difference**: here `a_cmd` is sent (Pursuit sends `{}`, no acceleration). |
+| 132 | `}` | Closes `updateSetpoint`. |
+| 134 | `private:` | Same as in Pursuit (line 83 of that table): what follows is only accessible inside the class. |
+| 135-155 | The whole `updateTargetPosition()` | Identical line by line to the one in `pursuit_mode.cpp` (lines 84-104 of that table): same `lookupTransform`, same `catch`, same ENU→NED conversion. |
+| 157 | `static constexpr float kMaxHorizontalSpeed = 7.0f; // [m/s]` | **Different value**: 7 m/s instead of 5 m/s. |
+| 158 | `static constexpr float kMaxVerticalSpeed = 2.0f; // [m/s]` | Same value as in Pursuit. |
+| 159 | `static constexpr float kMinHorizontalDistance = 0.1f; // [m]` | Same value as in Pursuit. |
+| 161 | ★ `static constexpr float kNavigationConstant = 3.5f; // Proportional navigation constant (N/lambda)` | Extra: proportional navigation gain. |
+| 162 | ★ `static constexpr float kMaxAcceleration = 3.0f; // [m/s^2]` | Extra: maximum allowed acceleration. |
+| 163 | ★ `static constexpr float kPnMinRange = 7.0f; // [m] Minimum range for PN to be active` | Extra: minimum distance for the PN acceleration to be active. |
+| 165-171 | Members `_trajectory_setpoint`, `_own_position`, `_target_frame`, `_tf_buffer`, `_tf_listener`, `_target_lookup_timer` | Identical to Pursuit's. |
+| 173 | `Eigen::Vector3f _target_position_ned{Eigen::Vector3f::Zero()};` | Same as in Pursuit. |
+| 174 | ★ `Eigen::Vector3f _target_velocity_ned{Eigen::Vector3f::Zero()};` | Extra: last known NED velocity of the target. |
+| 175 | ★ `std::string _target_velocity_topic;` | Extra: name of the velocity topic. |
+| 176 | ★ `rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr _target_velocity_sub;` | Extra: stores the velocity subscription. |
+| 178 | ★ `bool _target_velocity_valid{false};` | Extra: whether a valid target velocity has arrived. |
+| 179 | `bool _target_valid{false};` | Same as in Pursuit. |
+| 180 | `bool _target_reached{false};` | Same as in Pursuit (line 120 of that table): whether the reach has already been recorded in the current stretch. |
+| 181 | `float _last_yaw{0.f};` | Same as in Pursuit. |
+| 182 | `};` | Closes the `PN_Mode` class. |
+| 184 | `using PN_ModeNode = px4_ros2::NodeWithMode<PN_Mode>;` | Same pattern as `PursuitModeNode`, for this class. |
+| 186 | `static const std::string kNodeName = "PN_mode";` | Different executable/node name. |
+| 187 | `static const bool kEnableDebugOutput = true;` | Same as in Pursuit. |
+| 189-195 | The whole `main` | Same pattern as `pursuit_mode.cpp` (lines 129-135 of that table), using `PN_ModeNode` instead of `PursuitModeNode`. |
 
-Comparar estas dos tablas línea a línea es la forma más directa de ver
-exactamente qué añade PN sobre Pursuit: la suscripción de velocidad
-(líneas 42-59), la condición de armado que además exige velocidad válida
-(línea 71), `v_rel` (línea 90), el cálculo de `a_cmd` (líneas 102-118) y que
-`a_cmd` sí viaja en el `update()` final (línea 131). El bloque de alcance
-—`onActivate` (línea 66) y las líneas 92-100— es idéntico al de Pursuit. Todo lo demás —
-estructura de la clase, `updateTargetPosition`, `main`— es el mismo patrón
-con nombres distintos.
+Comparing these two tables line by line is the most direct way to see exactly
+what PN adds on top of Pursuit: the velocity subscription (lines 42-59), the
+arming condition that also requires a valid velocity (line 71), `v_rel` (line
+90), the `a_cmd` calculation (lines 102-118) and the fact that `a_cmd` is sent
+in the final `update()` (line 131). The reach block (`onActivate`, line 66, and
+lines 92-100) is identical to Pursuit's. Everything else (class structure,
+`updateTargetPosition`, `main`) is the same pattern with different names.
 
-## Cómo relacionar líneas con comportamiento observable
+## Relating lines to observable behaviour
 
-Una explicación de una línea es más útil cuando se puede comprobar en ejecución.
-Usa esta tabla como puente entre código y herramientas:
+Understanding a line is more useful when you can check it at run time. Use this
+table as a bridge between code and tools:
 
-| Código que estudias | Observación que puedes hacer |
+| Code you're studying | What you can observe |
 | --- | --- |
-| `create_subscription` | `ros2 node info` muestra la suscripción. |
-| `create_publisher` | `ros2 topic info` muestra el publisher. |
-| `create_wall_timer` | La frecuencia se aprecia con `ros2 topic hz` si el timer publica. |
-| `sendTransform` | `tf2_echo` puede consultar el frame generado. |
-| `lookupTransform` | Los warnings aparecen si el frame aún no existe. |
-| `TrajectorySetpointType::update` | El modo produce referencias que PX4 consume. |
-| `armingCheckFailureExt` | El modo informa de por qué aún no está listo para armar. |
-| `completed(Success)` | El modo comunica que ha alcanzado el criterio de finalización. |
+| `create_subscription` | `ros2 node info` shows the subscription. |
+| `create_publisher` | `ros2 topic info` shows the publisher. |
+| `create_wall_timer` | The rate shows up in `ros2 topic hz` if the timer publishes. |
+| `sendTransform` | `tf2_echo` can look up the generated frame. |
+| `lookupTransform` | Warnings appear if the frame doesn't exist yet. |
+| `TrajectorySetpointType::update` | The mode produces references that PX4 consumes. |
+| `armingCheckFailureExt` | The mode reports why it isn't ready to arm yet. |
+| `completed(Success)` | The mode reports that it has met its completion criterion. |
 
-Este método evita leer el código como texto aislado: cada bloque tiene una
-consecuencia en el grafo ROS 2, en el árbol tf2 o en el estado del modo PX4.
+This avoids reading the code as isolated text: each block has a consequence in
+the ROS 2 graph, in the tf2 tree or in the state of the PX4 mode.
 
-## Ejemplo de lectura de una callback
+## Example: reading a callback
 
-Para leer una callback de odometría, separa mentalmente sus operaciones:
+To read an odometry callback, split its operations in your head:
 
-1. **Entrada**: ¿qué tipo de mensaje recibe y quién lo publica?
-2. **Extracción**: ¿qué campos se leen (`position`, `velocity`, `q`)?
-3. **Conversión**: ¿cambia de frame o de tipo numérico?
-4. **Almacenamiento**: ¿se guarda para otro timer o método?
-5. **Salida**: ¿publica un tópico, un transform o un log?
+1. **Input**: which message type does it receive and who publishes it?
+2. **Extraction**: which fields are read (`position`, `velocity`, `q`)?
+3. **Conversion**: does it change frame or numeric type?
+4. **Storage**: is it stored for another timer or method?
+5. **Output**: does it publish a topic, a transform or a log line?
 
-En la suscripción a `target/velocity` de `PN_mode.cpp` (líneas 46-59), por
-ejemplo: la entrada es un `TwistStamped` publicado por `target_tf2_odometry`;
-la extracción son los tres campos de `twist.linear`; la conversión pasa la
-velocidad de ENU a NED y de `double` a `float`; el almacenamiento son los
-atributos `_target_velocity_ned` y `_target_velocity_valid`; y la salida no es
-inmediata — no publica nada ni actualiza ningún transform, solo deja el dato
-listo para que `updateSetpoint` lo use más tarde al calcular `v_rel`. Por eso
-esta callback corre a su propio ritmo (uno por cada mensaje de `target/velocity`
-que llega) mientras que el guiado se recalcula en el ritmo de `updateSetpoint`.
+In the `target/velocity` subscription of `PN_mode.cpp` (lines 46-59), for
+example: the input is a `TwistStamped` published by `target_tf2_odometry`; the
+extraction is the three fields of `twist.linear`; the conversion takes the
+velocity from ENU to NED and from `double` to `float`; the storage is the
+`_target_velocity_ned` and `_target_velocity_valid` members; and the output
+isn't immediate: it publishes nothing and updates no transform, it just leaves
+the data ready for `updateSetpoint` to use later when computing `v_rel`. That's
+why this callback runs at its own pace (once per `target/velocity` message)
+while the guidance is recomputed at the pace of `updateSetpoint`.
 
-## Qué no debe inferirse de una línea
+## What not to infer from a single line
 
-Una línea que crea una suscripción no demuestra que haya mensajes. Una línea que
-declara un publisher no garantiza que exista un subscriber. Una conversión
-matemática correcta tampoco garantiza que los datos tengan timestamps válidos.
-Siempre hay que combinar:
+A line that creates a subscription doesn't prove there are messages. A line
+that declares a publisher doesn't guarantee there's a subscriber. A correct
+mathematical conversion doesn't guarantee the data has valid timestamps either.
+Always combine:
 
-- lo que declara el código;
-- lo que muestra `ros2 node/topic`;
-- la frecuencia real;
-- los logs;
-- y, en el caso de tf2, el árbol de frames.
+- what the code declares;
+- what `ros2 node/topic` shows;
+- the actual rate;
+- the logs;
+- and, for tf2, the frame tree.
 
-La comprensión completa aparece al comparar esas cinco fuentes.
+You get the full picture by comparing those five sources.
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Nodos de odometría y tf2, línea por línea](Line-by-line-odometry-nodes.md) · ➡️ Siguiente: [Mapa del workspace y dependencias](Workspace-file-map.md)
+🏠 [Home](Home.md) · ⬅️ Previous: [Line by line: odometry and tf2 nodes](Line-by-line-odometry-nodes.md) · ➡️ Next: [Workspace map and dependencies](Workspace-file-map.md)

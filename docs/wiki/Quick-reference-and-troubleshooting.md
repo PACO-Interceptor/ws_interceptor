@@ -1,80 +1,80 @@
-# Referencia rápida y solución de problemas
+# Quick reference and troubleshooting
 
-Esta página es una lista de comprobaciones para cuando algo no funciona. Un
-**error** no siempre significa que el código esté mal: puede faltar un proceso,
-una dependencia, una configuración o un dato. La estrategia es comprobar una
-capa cada vez y no cambiar muchas cosas simultáneamente.
+This page is a checklist for when something doesn't work. An **error** doesn't
+always mean the code is wrong: a process, a dependency, a setting or some data
+may be missing. The approach is to check one layer at a time and not change
+many things at once.
 
-## Comandos habituales
+## Common commands
 
-Todos los comandos `ros2` de esta página se ejecutan en una terminal con el
-entorno cargado: desde la carpeta del workspace, `source
-/opt/ros/jazzy/setup.bash` y `source install/setup.bash` (ver
-[Cargar el entorno](Simulation.md#cargar-el-entorno)). Como el launch y los
-nodos ocupan su propia terminal, lo normal es abrir una aparte solo para
-diagnosticar.
+All the `ros2` commands on this page run in a terminal with the environment
+loaded: from the workspace folder, `source /opt/ros/jazzy/setup.bash` and
+`source install/setup.bash` (see
+[Load the environment](Simulation.md#load-the-environment)). Since the launch
+and the nodes take up their own terminals, you'll usually open a separate one
+just for diagnostics.
 
 ```bash
-# Ver nodos y tópicos activos
+# See active nodes and topics
 ros2 node list
 ros2 topic list
 
-# Ver quién publica/suscribe un nodo o un tópico
+# See who publishes/subscribes on a node or a topic
 ros2 node info /target_tf2_frame_publisher
 ros2 topic info /target/velocity
 
-# Ver el tipo de mensaje de un tópico
+# See the message type of a topic
 ros2 topic type /target/velocity
 
-# Medir la frecuencia de publicación
+# Measure the publishing rate
 ros2 topic hz /target/velocity
 
-# Inspeccionar mensajes
+# Inspect messages
 ros2 topic echo /target/velocity
 ros2 topic echo /px4_1/fmu/out/vehicle_odometry
 
-# Ejecutar un nodo del paquete
+# Run a node of the package
 ros2 run interceptor target_tf2_odometry
 ```
 
-`list` enumera qué existe, `info` muestra quién publica o se suscribe a un
-nodo o tópico concreto, `type` muestra el tipo de mensaje, `hz` calcula
-cuántos mensajes llegan por segundo, `echo` muestra los mensajes que pasan
-por un tópico y `run` arranca un ejecutable.
+`list` shows what exists, `info` shows who publishes or subscribes on a
+specific node or topic, `type` shows the message type, `hz` counts how many
+messages arrive per second, `echo` shows the messages going through a topic
+and `run` starts an executable.
 
-## Secuencia de diagnóstico recomendada
+## Suggested diagnostic sequence
 
-Ejecuta las comprobaciones en este orden, porque cada paso depende del anterior:
+Run the checks in this order, since each step depends on the previous one:
 
 ```bash
-# 1. ¿Está ROS 2 y qué nodos existen?
+# 1. Is ROS 2 up and which nodes exist?
 ros2 node list
 
-# 2. ¿Llegan datos de PX4?
+# 2. Is PX4 data arriving?
 ros2 topic list
 ros2 topic hz /fmu/out/vehicle_odometry
 ros2 topic hz /px4_1/fmu/out/vehicle_odometry
 
-# 3. ¿El mensaje tiene la estructura esperada?
+# 3. Does the message have the expected structure?
 ros2 topic type /px4_1/fmu/out/vehicle_odometry
 ros2 interface show px4_msgs/msg/VehicleOdometry
 
-# 4. ¿Existe el árbol tf2?
+# 4. Does the tf2 tree exist?
 ros2 run tf2_ros tf2_echo map target/base_link
 ros2 run tf2_ros tf2_echo map interceptor/base_link
 
-# 5. ¿Llega la velocidad transformada?
+# 5. Is the transformed velocity arriving?
 ros2 topic hz /target/velocity
 ```
 
-Si un comando falla, corrige ese nivel antes de continuar. No tiene sentido
-depurar PN mientras el tópico de odometría del target está vacío.
+If a command fails, fix that level before carrying on. There's no point
+debugging PN while the target's odometry topic is empty.
 
-## Problemas frecuentes
+## Common problems
 
-### `pursuit_mode` / `PN_mode` mueren con `Registration failed`
+### `pursuit_mode` / `PN_mode` die with `Registration failed`
 
-Si el log del launch muestra, a los ~15 s de arrancar:
+If the launch log shows, about 15 s after starting:
 
 ```text
 [pursuit_mode]: timeout while waiting for FMU publisher discovery
@@ -82,173 +82,173 @@ terminate called after throwing an instance of 'px4_ros2::Exception'
   what():  Registration failed
 ```
 
-o bien:
+or:
 
 ```text
 [PN_mode]: Mismatch for the following topics, update PX4 or the px4_ros2 library and px4_msgs:
-  - fmu/out/manual_control_setpoint
+ - fmu/out/manual_control_setpoint
 ```
 
-la versión de PX4 no coincide con el `px4_msgs` vendorizado: los modos buscan
-tópicos con un nombre o formato que ese PX4 no publica (por ejemplo, esperan
-`/fmu/out/vehicle_status_v4` y PX4 v1.17.0 publica `vehicle_status_v1`).
-Compila PX4 en el commit indicado en
-[Instalación y compilación](Installation-and-build.md#px4). Para ver qué
-versión publica tu PX4:
+the PX4 version doesn't match the vendored `px4_msgs`: the modes look for
+topics with a name or format that this PX4 doesn't publish (for example, they
+expect `/fmu/out/vehicle_status_v4` and PX4 v1.17.0 publishes
+`vehicle_status_v1`). Build PX4 at the commit given in
+[Installation and build](Installation-and-build.md#px4). To see which version
+your PX4 publishes:
 
 ```bash
 ros2 topic list | grep vehicle_status
 ```
 
-### El target no publica odometría (sensores ausentes)
+### The target publishes no odometry (missing sensors)
 
-Si la terminal de la instancia `1` repite `Preflight Fail: Accel Sensor 0
-missing`, `barometer 0 missing` o `ekf2 missing data`, y
-`ros2 topic hz /px4_1/fmu/out/vehicle_odometry` no muestra frecuencia aunque el
-tópico exista, la instancia `1` se arrancó sin `GZ_IP=127.0.0.1`: Gazebo crea el
-dron, pero PX4 no recibe sus sensores. Detén esa instancia y arráncala con la
-orden completa de [Ejecución de la simulación](Simulation.md#2-iniciar-px4-del-target).
+If the instance `1` terminal keeps printing `Preflight Fail: Accel Sensor 0
+missing`, `barometer 0 missing` or `ekf2 missing data`, and
+`ros2 topic hz /px4_1/fmu/out/vehicle_odometry` shows no rate even though the
+topic exists, instance `1` was started without `GZ_IP=127.0.0.1`: Gazebo
+creates the drone, but PX4 doesn't get its sensors. Stop that instance and
+start it with the full command from
+[Running the simulation](Simulation.md#2-start-the-targets-px4).
 
 ### `Arming denied` / `No connection to the GCS`
 
-PX4 no deja armar sin una estación de tierra conectada. Abre QGroundControl
-(ver [Ejecución de la simulación](Simulation.md#4-abrir-qgroundcontrol)); en
-cuanto se conecta, el aviso desaparece.
+PX4 won't arm without a ground station connected. Open QGroundControl (see
+[Running the simulation](Simulation.md#4-open-qgroundcontrol)); as soon as it
+connects, the warning goes away.
 
-### No aparece `map -> target/base_link` y el log habla de la referencia global
+### `map -> target/base_link` doesn't appear and the log mentions the global reference
 
-Si el log de `target_tf2_odometry` repite, como mucho cada 5 segundos:
+If the `target_tf2_odometry` log keeps printing, at most every 5 seconds:
 
 ```text
 Waiting for global reference (ref_lat/ref_lon/ref_alt) of interceptor and target
 before publishing map -> target/base_link
 ```
 
-el nodo está esperando a que el estimador de uno de los dos drones (o de los
-dos: el aviso dice cuál falta) fije su posición global. Sin esa referencia no
-puede colocar al target en el marco del interceptor, así que prefiere no
-publicar nada antes que publicar una posición mezclada. Normalmente se resuelve
-solo en unos segundos tras arrancar PX4. Si no, comprueba que la instancia tenga
-GPS simulado:
+the node is waiting for the estimator of one of the drones (or both; the
+message says which one is missing) to fix its global position. Without that
+reference it can't place the target in the interceptor's frame, so it would
+rather publish nothing than publish a mixed-up position. It normally sorts
+itself out a few seconds after PX4 starts. If not, check that the instance has
+simulated GPS:
 
 ```bash
 ros2 topic echo --once /fmu/out/vehicle_local_position_v1 --field xy_global
 ```
 
-Debe decir `true`. Mientras tanto, los modos de guiado no dejan armar, porque no
-reciben datos del target.
+It should say `true`. Until then, the guidance modes won't arm, because they
+get no target data.
 
-### El modo da el objetivo por alcanzado sin moverse
+### The mode reports the target reached without moving
 
-Si al activar **PN mode** o **Pursuit Intercept** el log muestra enseguida
-`Target reached. Stopping pursuit.` y el interceptor no se mueve, aunque en
-Gazebo el target esté lejos, los dos drones están midiendo desde orígenes
-distintos. `target_tf2_odometry` lo corrige solo, así que comprueba primero que
-ese nodo esté vivo y publicando:
+If, when activating **PN mode** or **Pursuit Intercept**, the log shows
+`Target reached. Stopping pursuit.` straight away and the interceptor doesn't
+move, even though the target is far away in Gazebo, the two drones are
+measuring from different origins. `target_tf2_odometry` corrects this by
+itself, so first check that the node is alive and publishing:
 
 ```bash
 ros2 run tf2_ros tf2_echo map target/base_link
 ```
 
-La distancia que muestre debe parecerse a la separación real en Gazebo. Como
-solución manual, se puede dar a los dos PX4 el mismo origen: lee `ref_lat`,
-`ref_lon` y `ref_alt` en la consola `pxh>` del interceptor con
-`listener vehicle_local_position` y aplícalos en la del target con
-`commander set_ekf_origin <ref_lat> <ref_lon> <ref_alt>`. Si responde
-`commander not running`, espera unos segundos y repite.
+The distance it shows should be close to the real separation in Gazebo. As a
+manual fix, both PX4s can be given the same origin: read `ref_lat`, `ref_lon`
+and `ref_alt` in the interceptor's `pxh>` console with
+`listener vehicle_local_position` and apply them in the target's with
+`commander set_ekf_origin <ref_lat> <ref_lon> <ref_alt>`. If it answers
+`commander not running`, wait a few seconds and try again.
 
-### No aparece `VehicleOdometry`
+### `VehicleOdometry` doesn't appear
 
-Comprueba que las dos instancias PX4 estén ejecutándose, que el agente esté
-activo y que cada terminal tenga cargado ROS 2. La instancia 1 debe publicar
-con el prefijo `/px4_1/`.
+Check that both PX4 instances are running, that the agent is up and that each
+terminal has ROS 2 loaded. Instance 1 must publish with the `/px4_1/` prefix.
 
-Distingue entre “el tópico no existe” y “existe pero no publica”. `ros2 topic
-list` comprueba lo primero y `ros2 topic hz` lo segundo. Si existe pero no hay
-frecuencia, revisa PX4, el agente y el transporte UDP.
+Tell apart "the topic doesn't exist" from "it exists but nothing is
+published". `ros2 topic list` checks the first and `ros2 topic hz` the second.
+If it exists but has no rate, check PX4, the agent and the UDP transport.
 
-### No aparece el target en tf2
+### The target doesn't appear in tf2
 
-Comprueba que `target_tf2_odometry` esté activo y que reciba
-`/px4_1/fmu/out/vehicle_odometry`. Si el tópico existe pero el frame no aparece,
-revisa la salida del nodo y el parámetro `vehicle_name`.
+Check that `target_tf2_odometry` is running and receiving
+`/px4_1/fmu/out/vehicle_odometry`. If the topic exists but the frame doesn't
+appear, look at the node's output and the `vehicle_name` parameter.
 
-Usa `tf2_echo` para saber qué frame falta. Si aparece `map` pero no
-`target/base_link`, el problema está en `target_tf2_odometry` o en su entrada,
-no en PN.
+Use `tf2_echo` to find which frame is missing. If `map` shows up but
+`target/base_link` doesn't, the problem is in `target_tf2_odometry` or its
+input, not in PN.
 
-### PN no permite armar
+### PN won't arm
 
-PN necesita dos datos: `map -> target/base_link` y `target/velocity`. Inicia
-`target_tf2_odometry` y confirma el tópico:
+PN needs two things: `map -> target/base_link` and `target/velocity`. Start
+`target_tf2_odometry` and check the topic:
 
 ```bash
 ros2 topic echo /target/velocity
 ```
 
-También confirma que el modo recibe la posición:
+Also check that the mode gets the position:
 
 ```bash
 ros2 run tf2_ros tf2_echo map target/base_link
 ```
 
-PN necesita que ambas fuentes existan; que solo funcione una no es suficiente.
+PN needs both sources; only one of them working is not enough.
 
-### El launch no encuentra Micro XRCE-DDS Agent
+### The launch can't find the Micro XRCE-DDS Agent
 
-El archivo de launch espera encontrar el agente en:
+The launch file expects the agent at:
 
 ```text
 ~/Micro-XRCE-DDS-Agent/build/MicroXRCEAgent
 ```
 
-Si la ruta de instalación es diferente, hay que ajustar
-`MICRO_XRCE_DDS_AGENT_DIR` en `interceptor.launch.py`.
+If it's installed somewhere else, change `MICRO_XRCE_DDS_AGENT_DIR` in
+`interceptor.launch.py`.
 
-### Los cambios de C++ no se reflejan
+### C++ changes don't show up
 
-Compila de nuevo y vuelve a cargar el workspace:
+Build again and reload the workspace:
 
 ```bash
 colcon build --packages-up-to interceptor --symlink-install
 source install/setup.bash
 ```
 
-Si sigue apareciendo una versión antigua, comprueba:
+If an old version still shows up, check:
 
 ```bash
 ros2 pkg prefix interceptor
 which ros2
 ```
 
-Puede que la terminal esté usando otro workspace superpuesto. Cada `source`
-modifica el entorno de esa terminal, no de las demás.
+The terminal may be using another overlaid workspace. Each `source` changes
+the environment of that terminal, not the others.
 
-### Aparecen warnings de tf2
+### tf2 warnings appear
 
-Los modos consultan transformaciones periódicamente. Es normal recibir avisos
-al principio, antes de que el conversor haya recibido la primera odometría.
-Warnings continuos indican que falta un nodo, un tópico o un nombre de frame.
+The modes look up transforms periodically. Getting warnings at the start,
+before the converter has received the first odometry, is normal. Continuous
+warnings mean a node, a topic or a frame name is missing.
 
-No ocultes el warning aumentando el intervalo sin entenderlo. Los nombres
-`map`, `target/base_link` e `interceptor/base_link` deben coincidir exactamente,
-incluyendo mayúsculas, barras y namespace.
+Don't hide the warning by increasing the interval without understanding it.
+The names `map`, `target/base_link` and `interceptor/base_link` must match
+exactly, including case, slashes and namespace.
 
-## Orden seguro para modificar código
+## A safe order for changing code
 
-1. Identifica si el cambio afecta a un nodo de diagnóstico, a tf2 o al guiado.
-2. Revisa los tópicos y marcos que ya utiliza el nodo.
-3. Mantén las conversiones NED/ENU en un solo lugar y documenta cualquier
-   cambio de convención.
-4. Compila con `colcon build --packages-up-to interceptor --symlink-install`.
-5. Ejecuta los tests/lint del paquete:
+1. Work out whether the change affects a diagnostic node, tf2 or the guidance.
+2. Review the topics and frames the node already uses.
+3. Keep the NED/ENU conversions in one place and document any change of
+   convention.
+4. Build with `colcon build --packages-up-to interceptor --symlink-install`.
+5. Run the package tests/lint:
 
 ```bash
 colcon test --packages-select interceptor --event-handlers console_direct+
 colcon test-result --verbose
 ```
 
-Antes de abrir una pull request, revisa también el diff:
+Before opening a pull request, also review the diff:
 
 ```bash
 git status
@@ -256,20 +256,20 @@ git diff --check
 git diff -- README.md docs/
 ```
 
-Una buena contribución explica qué cambió, por qué, cómo se probó y qué
-limitaciones siguen existiendo.
+A good contribution explains what changed, why, how it was tested and which
+limitations remain.
 
-## Referencias oficiales
+## Official references
 
 - [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/)
-- [PX4 (sitio oficial)](https://px4.io/)
-- [Guía ROS 2 de PX4](https://docs.px4.io/main/en/ros2/)
+- [PX4 (official site)](https://px4.io/)
+- [PX4 ROS 2 guide](https://docs.px4.io/main/en/ros2/)
 - [px4_msgs](https://github.com/PX4/px4_msgs)
 - [px4_ros_com](https://github.com/PX4/px4_ros_com)
 - [px4-ros2-interface-lib](https://github.com/Auterion/px4-ros2-interface-lib)
-- [Micro XRCE-DDS (documentación del protocolo)](https://micro-xrce-dds.docs.eprosima.com/en/latest/)
-- [Micro-XRCE-DDS-Agent (repositorio)](https://github.com/eProsima/Micro-XRCE-DDS-Agent)
+- [Micro XRCE-DDS (protocol documentation)](https://micro-xrce-dds.docs.eprosima.com/en/latest/)
+- [Micro-XRCE-DDS-Agent (repository)](https://github.com/eProsima/Micro-XRCE-DDS-Agent)
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Mapa del workspace y dependencias](Workspace-file-map.md)
+🏠 [Home](Home.md) · ⬅️ Previous: [Workspace map and dependencies](Workspace-file-map.md)

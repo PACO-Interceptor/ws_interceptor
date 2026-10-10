@@ -56,7 +56,7 @@ GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_
 cd ~/ws_interceptor          # la ruta donde clonaste el workspace
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-ros2 launch interceptor interceptor.launch.py modo:=pn
+ros2 launch interceptor interceptor.launch.py mode:=pn
 
 # 4. Estación de tierra
 ~/QGroundControl-x86_64.AppImage
@@ -102,7 +102,7 @@ sequenceDiagram
     Note over T1: esperar a que termine el arranque
     T2->>T2: GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" ... px4 -i 1 (instancia 1)
     Note over T2: esperar a que termine el arranque
-    T3->>T3: ros2 launch interceptor interceptor.launch.py modo:=pn
+    T3->>T3: ros2 launch interceptor interceptor.launch.py mode:=pn
     T3->>T3: arranca Micro XRCE-DDS Agent (udp4, puerto 8888)
     T3->>T3: arranca conversores tf2, diagnóstico y el modo de vuelo elegido
     T1-->>T3: VehicleOdometry (instancia 0)
@@ -164,18 +164,18 @@ personal). Es lo que explica [Cargar el entorno](#cargar-el-entorno):
 cd ~/ws_interceptor          # la ruta donde clonaste el workspace
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-ros2 launch interceptor interceptor.launch.py modo:=pn
+ros2 launch interceptor interceptor.launch.py mode:=pn
 ```
 
 Si lanzas esos `source` desde otra carpeta, verás
 `bash: install/setup.bash: No such file or directory` y después
 `Package 'interceptor' not found`: son la misma causa, no estás en el workspace.
 
-El argumento `modo` es opcional y solo acepta `pn` o `pursuit`; si se omite,
-vale `pn`. El launch
+El argumento `mode` es opcional y solo acepta `pn` o `pursuit`; si se omite,
+vale `pn` (el nombre antiguo, `modo:=`, se acepta de momento como alias). El launch
 inicia el agente con `udp4` en el puerto `8888`, los conversores de
 odometría, los nodos de diagnóstico y el único nodo de modo de vuelo elegido
-con `modo`. `udp4` significa comunicación UDP usando IPv4: una forma de enviar
+con `mode`. `udp4` significa comunicación UDP usando IPv4: una forma de enviar
 paquetes por la red sin mantener una conexión permanente; aquí se usa dentro
 del propio ordenador, para que el agente reciba los datos que le manda PX4.
 
@@ -310,7 +310,7 @@ Si sigue apareciendo algo después de cerrar todas las terminales, ciérralo con
 ## Nota sobre los modos
 
 El launch registra en PX4 **un solo** modo de guiado, el que elijas con
-`modo:=pn` o `modo:=pursuit`. Los dos se registran mediante `px4_ros2_cpp`,
+`mode:=pn` o `mode:=pursuit`. Los dos se registran mediante `px4_ros2_cpp`,
 pero de uno en uno: si ambos intentan registrarse a la vez, PX4 puede quedarse
 con un registro duplicado que no responde y ese modo deja de poder activarse.
 Para probar el otro, detén el launch y vuelve a lanzarlo con el otro valor.

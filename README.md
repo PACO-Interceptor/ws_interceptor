@@ -1,5 +1,7 @@
 # ws_interceptor
 
+Web del proyecto: https://paco-interceptor.github.io
+
 Workspace ROS 2 para el seguimiento e interceptación de un vehículo usando datos de odometría PX4.
 
 ## Requisitos
@@ -67,7 +69,7 @@ GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 ./build/px4_sitl_
 cd ~/ws_interceptor          # la ruta donde clonaste el workspace
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-ros2 launch interceptor interceptor.launch.py modo:=pn
+ros2 launch interceptor interceptor.launch.py mode:=pn
 
 # 4. Estación de tierra
 ~/QGroundControl-x86_64.AppImage
@@ -77,8 +79,9 @@ En QGroundControl: despega el target (vehículo 2), mándalo a otro punto con
 *Go to location*, despega el interceptor (vehículo 1) y elígele **PN mode** o
 **Pursuit Intercept** en el selector de modo.
 
-El argumento `modo` es opcional y solo acepta `pn` o `pursuit`: elige qué modo
+El argumento `mode` es opcional y solo acepta `pn` o `pursuit`: elige qué modo
 de guiado se registra en PX4, ya que solo se lanza uno. Si se omite, vale `pn`.
+El nombre antiguo, `modo:=`, sigue funcionando de momento como alias de `mode`.
 Sin QGroundControl conectado, PX4 no deja armar. Los nodos individuales también
 pueden iniciarse con `ros2 run interceptor <ejecutable>`.
 

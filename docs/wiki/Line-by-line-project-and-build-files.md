@@ -260,107 +260,125 @@ número de línea coincide.
 | 6 | `Arranca el agente Micro XRCE-DDS, los 4 nodos de odometria/diagnostico` | Resume qué arranca este launch: el agente DDS y los 4 nodos de odometría/diagnóstico. |
 | 7 | `(dos instancias de vehicle_odometry_subscriber, una por vehiculo, mas` | Nombra esos nodos: dos instancias del suscriptor de diagnóstico, una por vehículo. |
 | 8 | `target_tf2_odometry e interceptor_tf2_odometry) y un solo modo de` | Cierra la lista con los dos conversores tf2 y añade que solo se lanza un modo de guiado. |
-| 9 | `guiado, elegido con el argumento modo:=pn\|pursuit (por defecto, pn).` | Indica que el modo se elige con el argumento `modo`, que acepta `pn` o `pursuit`, y que si no se indica vale `pn`. |
-| 11 | `Ejemplo de uso:` | Introduce el ejemplo de invocación. |
-| 12 | `    ros2 launch interceptor interceptor.launch.py            # equivale a modo:=pn` | Invocación más corta: sin argumento se usa el valor por defecto, `pn`. |
-| 13 | `    ros2 launch interceptor interceptor.launch.py modo:=pursuit` | Invocación equivalente eligiendo el otro modo de guiado. |
-| 15 | `PX4 se lanza a mano, cada instancia en su propia terminal (desde ~/PX4-Autopilot):` | Aclara que PX4 no se arranca desde este archivo, y desde qué carpeta se ejecutan los comandos siguientes. |
-| 16 | `    interceptor (instancia 0): make px4_sitl gz_x500` | Comando de ejemplo para arrancar la instancia 0 (interceptor). |
-| 17 | `    target (instancia 1):` | Introduce el comando de la instancia 1 (target). |
-| 18 | `        GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 \` | Comando de ejemplo para arrancar la instancia 1 (target), 20 m al norte del interceptor (`PX4_GZ_MODEL_POSE="0,20"`); la barra invertida continúa en la línea siguiente. |
-| 19 | `            ./build/px4_sitl_default/bin/px4 -i 1` | Resto del comando de la instancia 1. |
-| 21 | `Al pulsar Ctrl-C, el launch tarda unos 5 s en cerrarse: a proposito, para dar tiempo al` | Avisa de que el cierre con Ctrl-C tarda unos 5 s, y que es intencional. |
-| 22 | `modo de guiado a darse de baja en PX4 antes de que el agente muera.` | Explica el motivo: dar tiempo al modo de guiado a darse de baja en PX4. |
-| 23 | `"""` | Cierra el docstring. |
-| 25 | `import os` | Importa utilidades del sistema operativo, aquí solo se usa para expandir `~`. |
-| 27 | `from launch import LaunchDescription` | Importa la clase que representa "la lista de acciones a ejecutar". |
-| 28 | `from launch.actions import DeclareLaunchArgument, ExecuteProcess` | Importa la acción que declara un argumento de launch (`modo`) y la que lanza un comando de shell arbitrario (el agente DDS). |
-| 29 | `from launch.conditions import IfCondition` | Importa la condición que decide si una acción se ejecuta o no, según una expresión booleana. |
-| 30 | `from launch.substitutions import EqualsSubstitution, LaunchConfiguration` | Importa la sustitución que compara dos valores en tiempo de lanzamiento (`EqualsSubstitution`) y la que lee el valor de un argumento declarado (`LaunchConfiguration`). |
-| 31 | `from launch_ros.actions import Node` | Importa la acción que lanza un nodo ROS 2 de un paquete. |
-| 33 | `MICRO_XRCE_DDS_AGENT_DIR = os.path.expanduser('~/Micro-XRCE-DDS-Agent')` | Expande `~` a la ruta absoluta del usuario actual y la guarda en una constante. |
-| 36 | `def generate_launch_description():` | Define la función sin argumentos que ROS 2 busca y ejecuta al hacer `ros2 launch`. |
-| 38 | `modo_arg = DeclareLaunchArgument(` | Empieza a declarar el argumento de launch `modo`. |
-| 39 | `'modo',` | Nombre del argumento: se pasa como `modo:=<valor>` en la línea de comandos. |
-| 40 | `default_value='pn',` | Valor que toma el argumento si no se indica en la línea de comandos: se registra `PN_mode`. |
-| 41 | `choices=['pn', 'pursuit'],` | Restringe los valores válidos a `pn` y `pursuit`; combinado con `default_value`, un valor fuera de esa lista da error. |
-| 42 | `description=(` | Empieza la descripción del argumento (se ve con `ros2 launch interceptor interceptor.launch.py --show-args`). |
-| 43 | `'Modo de guiado que se registra en PX4 (pn = PN mode, pursuit = Pursuit '` | Primera parte del texto de la descripción. |
-| 44 | `'Intercept); solo se lanza uno. Por defecto, pn.'` | Segunda parte: aclara que solo se lanza un modo y cuál es el de por defecto. |
-| 45 | `),` | Cierra la tupla de strings concatenados de `description`. |
-| 46 | `)` | Cierra la llamada a `DeclareLaunchArgument`. |
-| 48 | `# El agente ignora SIGINT para seguir vivo tras el Ctrl-C hasta que el launch escala a` | Comentario: explica por qué el agente ignora SIGINT. |
-| 49 | ``# SIGTERM: asi el modo de guiado tiene tiempo de enviar `Unregistering` a PX4.`` | Continúa el comentario: da tiempo al modo de guiado a darse de baja en PX4. |
-| 50 | `micro_xrce_agent = ExecuteProcess(` | Empieza a construir la acción que arrancará el agente DDS. |
-| 51 | `cmd=[["trap '' INT; exec ./build/MicroXRCEAgent udp4 -p 8888"]],` | Comando a ejecutar: `trap '' INT` hace que el proceso ignore SIGINT (Ctrl-C no lo mata); `exec` sustituye la shell por el binario del agente, transporte UDP/IPv4, puerto 8888, para que la señal de cierre (SIGTERM) le llegue directamente a él. |
-| 52 | `shell=True,` | Ejecuta ese comando a través de una shell, como si se escribiera en una terminal. |
-| 53 | `cwd=MICRO_XRCE_DDS_AGENT_DIR,` | Carpeta de trabajo donde se lanza el comando (debe existir `build/MicroXRCEAgent` ahí dentro). |
-| 54 | `output='log',` | La salida del proceso va a los logs de ROS 2, no directamente a la terminal. |
-| 55 | `)` | Cierra la llamada a `ExecuteProcess`. |
-| 57 | `target_vehicle_odometry_subscriber_node = Node(` | Empieza a construir el bloque del primer nodo. |
-| 58 | `package='interceptor',` | Paquete ROS 2 donde buscar el ejecutable. |
-| 59 | `executable='vehicle_odometry_subscriber',` | Nombre del binario a ejecutar: el suscriptor de diagnóstico parametrizado (ver [Nodos y tópicos](Nodes-and-topics.md)). |
-| 60 | `name='target_vehicle_odometry_subscriber',` | Nombre visible del nodo en `ros2 node list`, distinto del ejecutable. |
-| 61 | `parameters=[{` | Empieza la lista de parámetros de esta instancia. |
-| 62 | `'vehicle_name': 'target',` | Fija `vehicle_name` a `target`. |
-| 63 | `'odometry_topic': '/px4_1/fmu/out/vehicle_odometry',` | Fija `odometry_topic` al tópico de la instancia 1 (target): con esto el nombre del nodo y el tópico que escucha coinciden. |
-| 64 | `}],` | Cierra la lista de parámetros. |
-| 65 | `output='log',` | Su salida va a los logs, no a pantalla. |
-| 66 | `)` | Cierra el bloque de este nodo. |
-| 68 | `target_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del target. |
-| 69 | `package='interceptor',` | Igual que la línea 58. |
-| 70 | `executable='target_tf2_odometry',` | Ejecutable que convierte la odometría del target y publica `target/base_link` y `target/velocity`. |
-| 71 | `output='screen',` | Aquí la salida sí va directamente a la terminal (`screen`), a diferencia de los diagnósticos. |
-| 72 | `)` | Cierra el bloque. |
-| 74 | `interceptor_vehicle_odometry_subscriber_node = Node(` | Empieza el bloque del segundo suscriptor de diagnóstico. |
-| 75 | `package='interceptor',` | Igual que arriba. |
-| 76 | `executable='vehicle_odometry_subscriber',` | Mismo ejecutable que la primera instancia, con otros parámetros. |
-| 77 | `name='interceptor_vehicle_odometry_subscriber',` | Nombre visible de esta instancia. |
-| 78 | `parameters=[{` | Empieza la lista de parámetros. |
-| 79 | `'vehicle_name': 'interceptor',` | Fija `vehicle_name` a `interceptor`. |
-| 80 | `'odometry_topic': '/fmu/out/vehicle_odometry',` | Fija `odometry_topic` al tópico de la instancia 0 (interceptor). |
-| 81 | `}],` | Cierra la lista de parámetros. |
-| 82 | `output='log',` | Salida a logs. |
-| 83 | `)` | Cierra el bloque. |
-| 85 | `interceptor_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del interceptor. |
-| 86 | `package='interceptor',` | Igual que arriba. |
-| 87 | `executable='interceptor_tf2_odometry',` | Publica `map -> interceptor/base_link`. |
-| 88 | `output='screen',` | Salida a pantalla. |
-| 89 | `)` | Cierra el bloque. |
-| 91 | `# tf2_listener_node = Node(` | Línea comentada: empieza con `#`, así que Python la ignora por completo. |
-| 92 | `#     package='interceptor',` | Comentada, ignorada. |
-| 93 | `#     executable='tf2_listener',` | Comentada, ignorada. |
-| 94 | `#     output='screen',` | Comentada, ignorada. |
-| 95 | `# )` | Comentada, ignorada. Todo este bloque de 5 líneas está desactivado: por eso `tf2_listener` no arranca con el launch por defecto. |
-| 97 | `pursuit_mode_node = Node(` | Empieza el bloque del modo de persecución pura. |
-| 98 | `package='interceptor',` | Igual que arriba. |
-| 99 | `executable='pursuit_mode',` | Ejecutable del modo `pursuit_mode`. |
-| 100 | `output='screen',` | Salida a pantalla. |
-| 101 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('modo'), 'pursuit')),` | Solo se lanza este nodo si `modo` vale `pursuit`: compara el valor del argumento con la cadena `'pursuit'`. |
-| 102 | `)` | Cierra el bloque. |
-| 104 | `PN_mode_node = Node(` | Empieza el bloque del modo de navegación proporcional. |
-| 105 | `package='interceptor',` | Igual que arriba. |
-| 106 | `executable='PN_mode',` | Ejecutable del modo `PN_mode`. |
-| 107 | `output='screen',` | Salida a pantalla. |
-| 108 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('modo'), 'pn')),` | Solo se lanza este nodo si `modo` vale `pn`. |
-| 109 | `)` | Cierra el bloque. |
-| 111 | `return LaunchDescription([` | Construye y devuelve la lista de acciones que ROS 2 ejecutará; el orden de esta lista es el orden de arranque. |
-| 112 | `modo_arg,` | Primero se declara el argumento `modo` (debe ir antes de usarse en las condiciones de los nodos). |
-| 113 | `micro_xrce_agent,` | Después se arranca el agente DDS. |
-| 114 | `target_vehicle_odometry_subscriber_node,` | Después este nodo. |
-| 115 | `target_tf2_odometry_node,` | Después este. |
-| 116 | `interceptor_vehicle_odometry_subscriber_node,` | Después este. |
-| 117 | `interceptor_tf2_odometry_node,` | Después este. |
-| 118 | `pursuit_mode_node,` | Este solo arranca de verdad si `modo:=pursuit`. |
-| 119 | `PN_mode_node,` | Y este solo si `modo:=pn`. |
-| 120 | `])` | Cierra la lista y la llamada a `LaunchDescription`. |
+| 9 | `guiado, elegido con el argumento mode:=pn\|pursuit (por defecto, pn).` | Indica que el modo se elige con el argumento `mode`, que acepta `pn` o `pursuit`, y que si no se indica vale `pn`. |
+| 10 | `El nombre antiguo, modo:=, se acepta temporalmente como alias de mode.` | Avisa de que el nombre antiguo del argumento, `modo`, sigue funcionando de momento como alias de `mode`. |
+| 12 | `Ejemplo de uso:` | Introduce el ejemplo de invocación. |
+| 13 | `    ros2 launch interceptor interceptor.launch.py            # equivale a mode:=pn` | Invocación más corta: sin argumento se usa el valor por defecto, `pn`. |
+| 14 | `    ros2 launch interceptor interceptor.launch.py mode:=pursuit` | Invocación equivalente eligiendo el otro modo de guiado. |
+| 16 | `PX4 se lanza a mano, cada instancia en su propia terminal (desde ~/PX4-Autopilot):` | Aclara que PX4 no se arranca desde este archivo, y desde qué carpeta se ejecutan los comandos siguientes. |
+| 17 | `    interceptor (instancia 0): make px4_sitl gz_x500` | Comando de ejemplo para arrancar la instancia 0 (interceptor). |
+| 18 | `    target (instancia 1):` | Introduce el comando de la instancia 1 (target). |
+| 19 | `        GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 \` | Comando de ejemplo para arrancar la instancia 1 (target), 20 m al norte del interceptor (`PX4_GZ_MODEL_POSE="0,20"`); la barra invertida continúa en la línea siguiente. |
+| 20 | `            ./build/px4_sitl_default/bin/px4 -i 1` | Resto del comando de la instancia 1. |
+| 22 | `Al pulsar Ctrl-C, el launch tarda unos 5 s en cerrarse: a proposito, para dar tiempo al` | Avisa de que el cierre con Ctrl-C tarda unos 5 s, y que es intencional. |
+| 23 | `modo de guiado a darse de baja en PX4 antes de que el agente muera.` | Explica el motivo: dar tiempo al modo de guiado a darse de baja en PX4. |
+| 24 | `"""` | Cierra el docstring. |
+| 26 | `import os` | Importa utilidades del sistema operativo, aquí solo se usa para expandir `~`. |
+| 28 | `from launch import LaunchDescription` | Importa la clase que representa "la lista de acciones a ejecutar". |
+| 29 | `from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, SetLaunchConfiguration` | Importa la acción que declara un argumento de launch (`mode`, `modo`), la que lanza un comando de shell arbitrario (el agente DDS), la que escribe un mensaje en el log (`LogInfo`) y la que cambia el valor de un argumento ya declarado (`SetLaunchConfiguration`). |
+| 30 | `from launch.conditions import IfCondition, UnlessCondition` | Importa las condiciones que deciden si una acción se ejecuta o no: `IfCondition` la ejecuta si la expresión es verdadera y `UnlessCondition` si es falsa. |
+| 31 | `from launch.substitutions import EqualsSubstitution, LaunchConfiguration` | Importa la sustitución que compara dos valores en tiempo de lanzamiento (`EqualsSubstitution`) y la que lee el valor de un argumento declarado (`LaunchConfiguration`). |
+| 32 | `from launch_ros.actions import Node` | Importa la acción que lanza un nodo ROS 2 de un paquete. |
+| 34 | `MICRO_XRCE_DDS_AGENT_DIR = os.path.expanduser('~/Micro-XRCE-DDS-Agent')` | Expande `~` a la ruta absoluta del usuario actual y la guarda en una constante. |
+| 37 | `def generate_launch_description():` | Define la función sin argumentos que ROS 2 busca y ejecuta al hacer `ros2 launch`. |
+| 39 | `mode_arg = DeclareLaunchArgument(` | Empieza a declarar el argumento de launch `mode`. |
+| 40 | `'mode',` | Nombre del argumento: se pasa como `mode:=<valor>` en la línea de comandos. |
+| 41 | `default_value='pn',` | Valor que toma el argumento si no se indica en la línea de comandos: se registra `PN_mode`. |
+| 42 | `choices=['pn', 'pursuit'],` | Restringe los valores válidos a `pn` y `pursuit`; combinado con `default_value`, un valor fuera de esa lista da error. |
+| 43 | `description=(` | Empieza la descripción del argumento (se ve con `ros2 launch interceptor interceptor.launch.py --show-args`). |
+| 44 | `'Modo de guiado que se registra en PX4 (pn = PN mode, pursuit = Pursuit '` | Primera parte del texto de la descripción. |
+| 45 | `'Intercept); solo se lanza uno. Por defecto, pn.'` | Segunda parte: aclara que solo se lanza un modo y cuál es el de por defecto. |
+| 46 | `),` | Cierra la tupla de strings concatenados de `description`. |
+| 47 | `)` | Cierra la llamada a `DeclareLaunchArgument`. |
+| 49 | `# Alias temporal del nombre antiguo del argumento. Si se pasa modo:=, su valor` | Comentario: lo que sigue es un alias temporal del nombre antiguo, `modo`, y si se pasa, su valor sustituye al de `mode`. |
+| 50 | `# sustituye al de mode. Eliminar cuando ya no se use modo:= en ningun sitio.` | Continúa el comentario: el alias se quitará cuando nadie use ya `modo:=`. |
+| 51 | `modo_arg = DeclareLaunchArgument(` | Empieza a declarar el argumento `modo`, que solo existe por compatibilidad. |
+| 52 | `'modo',` | Nombre del argumento antiguo: `modo:=<valor>`. |
+| 53 | `default_value='',` | Por defecto vale la cadena vacía, que aquí significa "no se ha pasado". |
+| 54 | `choices=['', 'pn', 'pursuit'],` | Valores válidos: vacío, `pn` o `pursuit`; cualquier otro valor da error igual que con `mode`. |
+| 55 | `description='Obsoleto: alias temporal de mode. Usar mode:=pn\|pursuit.',` | Descripción que aparece con `--show-args`: avisa de que está obsoleto y de qué usar en su lugar. |
+| 56 | `)` | Cierra la llamada a `DeclareLaunchArgument`. |
+| 57 | `modo_given = UnlessCondition(EqualsSubstitution(LaunchConfiguration('modo'), ''))` | Guarda en una variable la condición "`modo` no está vacío", es decir, el usuario pasó `modo:=`; se reutiliza en las dos acciones siguientes. |
+| 58 | `modo_alias = SetLaunchConfiguration('mode', LaunchConfiguration('modo'), condition=modo_given)` | Si se pasó `modo:=`, copia su valor en `mode`. Como esta acción va en la lista antes que los nodos, las condiciones de los nodos ya ven el valor copiado. |
+| 59 | `modo_warning = LogInfo(` | Empieza a construir una acción que escribe un mensaje en el log del launch. |
+| 60 | `msg='El argumento modo:= esta obsoleto; usa mode:= en su lugar.',` | Texto del aviso: `modo:=` está obsoleto y hay que usar `mode:=`. |
+| 61 | `condition=modo_given,` | El aviso solo se muestra si se pasó `modo:=`. |
+| 62 | `)` | Cierra la llamada a `LogInfo`. |
+| 64 | `# El agente ignora SIGINT para seguir vivo tras el Ctrl-C hasta que el launch escala a` | Comentario: explica por qué el agente ignora SIGINT. |
+| 65 | ``# SIGTERM: asi el modo de guiado tiene tiempo de enviar `Unregistering` a PX4.`` | Continúa el comentario: da tiempo al modo de guiado a darse de baja en PX4. |
+| 66 | `micro_xrce_agent = ExecuteProcess(` | Empieza a construir la acción que arrancará el agente DDS. |
+| 67 | `cmd=[["trap '' INT; exec ./build/MicroXRCEAgent udp4 -p 8888"]],` | Comando a ejecutar: `trap '' INT` hace que el proceso ignore SIGINT (Ctrl-C no lo mata); `exec` sustituye la shell por el binario del agente, transporte UDP/IPv4, puerto 8888, para que la señal de cierre (SIGTERM) le llegue directamente a él. |
+| 68 | `shell=True,` | Ejecuta ese comando a través de una shell, como si se escribiera en una terminal. |
+| 69 | `cwd=MICRO_XRCE_DDS_AGENT_DIR,` | Carpeta de trabajo donde se lanza el comando (debe existir `build/MicroXRCEAgent` ahí dentro). |
+| 70 | `output='log',` | La salida del proceso va a los logs de ROS 2, no directamente a la terminal. |
+| 71 | `)` | Cierra la llamada a `ExecuteProcess`. |
+| 73 | `target_vehicle_odometry_subscriber_node = Node(` | Empieza a construir el bloque del primer nodo. |
+| 74 | `package='interceptor',` | Paquete ROS 2 donde buscar el ejecutable. |
+| 75 | `executable='vehicle_odometry_subscriber',` | Nombre del binario a ejecutar: el suscriptor de diagnóstico parametrizado (ver [Nodos y tópicos](Nodes-and-topics.md)). |
+| 76 | `name='target_vehicle_odometry_subscriber',` | Nombre visible del nodo en `ros2 node list`, distinto del ejecutable. |
+| 77 | `parameters=[{` | Empieza la lista de parámetros de esta instancia. |
+| 78 | `'vehicle_name': 'target',` | Fija `vehicle_name` a `target`. |
+| 79 | `'odometry_topic': '/px4_1/fmu/out/vehicle_odometry',` | Fija `odometry_topic` al tópico de la instancia 1 (target): con esto el nombre del nodo y el tópico que escucha coinciden. |
+| 80 | `}],` | Cierra la lista de parámetros. |
+| 81 | `output='log',` | Su salida va a los logs, no a pantalla. |
+| 82 | `)` | Cierra el bloque de este nodo. |
+| 84 | `target_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del target. |
+| 85 | `package='interceptor',` | Igual que la línea 74. |
+| 86 | `executable='target_tf2_odometry',` | Ejecutable que convierte la odometría del target y publica `target/base_link` y `target/velocity`. |
+| 87 | `output='screen',` | Aquí la salida sí va directamente a la terminal (`screen`), a diferencia de los diagnósticos. |
+| 88 | `)` | Cierra el bloque. |
+| 90 | `interceptor_vehicle_odometry_subscriber_node = Node(` | Empieza el bloque del segundo suscriptor de diagnóstico. |
+| 91 | `package='interceptor',` | Igual que arriba. |
+| 92 | `executable='vehicle_odometry_subscriber',` | Mismo ejecutable que la primera instancia, con otros parámetros. |
+| 93 | `name='interceptor_vehicle_odometry_subscriber',` | Nombre visible de esta instancia. |
+| 94 | `parameters=[{` | Empieza la lista de parámetros. |
+| 95 | `'vehicle_name': 'interceptor',` | Fija `vehicle_name` a `interceptor`. |
+| 96 | `'odometry_topic': '/fmu/out/vehicle_odometry',` | Fija `odometry_topic` al tópico de la instancia 0 (interceptor). |
+| 97 | `}],` | Cierra la lista de parámetros. |
+| 98 | `output='log',` | Salida a logs. |
+| 99 | `)` | Cierra el bloque. |
+| 101 | `interceptor_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del interceptor. |
+| 102 | `package='interceptor',` | Igual que arriba. |
+| 103 | `executable='interceptor_tf2_odometry',` | Publica `map -> interceptor/base_link`. |
+| 104 | `output='screen',` | Salida a pantalla. |
+| 105 | `)` | Cierra el bloque. |
+| 107 | `# tf2_listener_node = Node(` | Línea comentada: empieza con `#`, así que Python la ignora por completo. |
+| 108 | `#     package='interceptor',` | Comentada, ignorada. |
+| 109 | `#     executable='tf2_listener',` | Comentada, ignorada. |
+| 110 | `#     output='screen',` | Comentada, ignorada. |
+| 111 | `# )` | Comentada, ignorada. Todo este bloque de 5 líneas está desactivado: por eso `tf2_listener` no arranca con el launch por defecto. |
+| 113 | `pursuit_mode_node = Node(` | Empieza el bloque del modo de persecución pura. |
+| 114 | `package='interceptor',` | Igual que arriba. |
+| 115 | `executable='pursuit_mode',` | Ejecutable del modo `pursuit_mode`. |
+| 116 | `output='screen',` | Salida a pantalla. |
+| 117 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('mode'), 'pursuit')),` | Solo se lanza este nodo si `mode` vale `pursuit`: compara el valor del argumento con la cadena `'pursuit'`. |
+| 118 | `)` | Cierra el bloque. |
+| 120 | `PN_mode_node = Node(` | Empieza el bloque del modo de navegación proporcional. |
+| 121 | `package='interceptor',` | Igual que arriba. |
+| 122 | `executable='PN_mode',` | Ejecutable del modo `PN_mode`. |
+| 123 | `output='screen',` | Salida a pantalla. |
+| 124 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('mode'), 'pn')),` | Solo se lanza este nodo si `mode` vale `pn`. |
+| 125 | `)` | Cierra el bloque. |
+| 127 | `return LaunchDescription([` | Construye y devuelve la lista de acciones que ROS 2 ejecutará; el orden de esta lista es el orden de arranque. |
+| 128 | `mode_arg,` | Primero se declara el argumento `mode` (debe ir antes de usarse en las condiciones de los nodos). |
+| 129 | `modo_arg,` | Después el alias `modo`. |
+| 130 | `modo_alias,` | Si se pasó `modo:=`, su valor se copia en `mode` aquí, antes de evaluar las condiciones de los nodos. |
+| 131 | `modo_warning,` | Y, en ese caso, se muestra el aviso de que `modo` está obsoleto. |
+| 132 | `micro_xrce_agent,` | Después se arranca el agente DDS. |
+| 133 | `target_vehicle_odometry_subscriber_node,` | Después este nodo. |
+| 134 | `target_tf2_odometry_node,` | Después este. |
+| 135 | `interceptor_vehicle_odometry_subscriber_node,` | Después este. |
+| 136 | `interceptor_tf2_odometry_node,` | Después este. |
+| 137 | `pursuit_mode_node,` | Este solo arranca de verdad si `mode:=pursuit`. |
+| 138 | `PN_mode_node,` | Y este solo si `mode:=pn`. |
+| 139 | `])` | Cierra la lista y la llamada a `LaunchDescription`. |
 
 `tf2_listener_node` no aparece en esta lista final porque su variable ni
 siquiera llegó a crearse (está comentada arriba): no basta con comentar el
 bloque, si estuviera descomentado también habría que añadirlo aquí para que se
 ejecute. `pursuit_mode_node` y `PN_mode_node` sí están siempre en la lista,
 pero su `condition` decide en tiempo de lanzamiento si el proceso llega a
-arrancar; solo uno de los dos lo hace, según `modo`. PX4 SITL no aparece en
+arrancar; solo uno de los dos lo hace, según `mode`. PX4 SITL no aparece en
 ningún punto de este archivo: se arranca a mano en otras terminales, como
 recuerda el docstring del principio.
 

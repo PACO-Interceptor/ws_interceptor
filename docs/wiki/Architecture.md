@@ -1,225 +1,222 @@
-# Arquitectura y flujo de datos
+# Architecture and data flow
 
-En esta página, **arquitectura** significa la organización del sistema:
-qué programas existen, qué dato produce cada uno y quién lo utiliza después.
-Un **flujo de datos** es el recorrido de un dato desde su origen hasta quien lo
-necesita.
+On this page, **architecture** means how the system is organised: which
+programs exist, what data each one produces and who uses it next. A **data
+flow** is the path a piece of data follows from where it is produced to
+whoever needs it.
 
-## Visión general
+## Overview
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
 flowchart LR
-    PX4I["PX4 interceptor<br/>(instancia 0)"] -->|VehicleOdometry| TFI[interceptor_tf2_odometry]
-    TFI -->|"map -> interceptor/base_link"| TF2[("árbol tf2")]
+    PX4I["PX4 interceptor<br/>(instance 0)"] -->|VehicleOdometry| TFI[interceptor_tf2_odometry]
+    TFI -->|"map -> interceptor/base_link"| TF2[("tf2 tree")]
 
-    PX4T["PX4 target<br/>(instancia 1)"] -->|VehicleOdometry| TFT[target_tf2_odometry]
+    PX4T["PX4 target<br/>(instance 1)"] -->|VehicleOdometry| TFT[target_tf2_odometry]
     TFT -->|"map -> target/base_link"| TF2
-    TFT -->|target/velocity| VEL[("tópico target/velocity")]
+    TFT -->|target/velocity| VEL[("target/velocity topic")]
 
-    TF2 -->|posición del target| MODE["pursuit_mode / PN_mode"]
-    VEL -->|velocidad del target| MODE
+    TF2 -->|target position| MODE["pursuit_mode / PN_mode"]
+    VEL -->|target velocity| MODE
     MODE -->|TrajectorySetpoint| PX4I
 
     classDef datastore fill:#3b2f52,stroke:#b794f4,color:#f1eaff
     class TF2,VEL datastore
 ```
 
-No todas las cajas son lo mismo, y el diagrama lo marca: los rectángulos son
-**procesos**, programas en ejecución (las dos instancias de PX4, los dos
-conversores tf2, los modos de guiado). Las dos cajas con forma de cilindro y
-color distinto —el árbol tf2 y el tópico `target/velocity`— no son
-procesos; nadie las "ejecuta". Son sitios donde un proceso deja un dato para
-que otro lo recoja más tarde. El árbol tf2 en concreto funciona como un
-almacén de relaciones entre frames, mantenido por el sistema tf2, no por el
-código propio.
+Not all boxes are the same thing, and the diagram shows it: rectangles are
+**processes**, programs that are running (the two PX4 instances, the two tf2
+converters, the guidance modes). The two cylinder-shaped boxes in a different
+colour (the tf2 tree and the `target/velocity` topic) are not processes;
+nobody "runs" them. They are places where one process leaves data for another
+to pick up later. The tf2 tree in particular works as a store of relations
+between frames, kept by the tf2 system, not by our code.
 
-El código no habla con ese almacén directamente: usa tres piezas de la
-biblioteca tf2 para hacerlo. El **broadcaster** es lo que usan
-`interceptor_tf2_odometry` y `target_tf2_odometry` para *escribir* en el
-árbol tf2 (es el "publisher" de tf2). El **buffer** es una copia local de
-parte de ese árbol, guardada dentro de cada nodo que necesita consultarlo. El
-**listener** es lo que mantiene esa copia local al día: escucha el árbol tf2
-en segundo plano y rellena el buffer automáticamente (es el "suscriptor" de
-tf2). Los modos de guiado y `tf2_listener` tienen su propio buffer y
-listener porque necesitan *leer* el árbol; los conversores tf2 solo tienen
-broadcaster porque solo necesitan *escribir* en él.
+The code doesn't talk to that store directly: it uses three pieces of the tf2
+library. The **broadcaster** is what `interceptor_tf2_odometry` and
+`target_tf2_odometry` use to *write* to the tf2 tree (it is tf2's
+"publisher"). The **buffer** is a local copy of part of that tree, kept
+inside each node that needs to query it. The **listener** keeps that local
+copy up to date: it listens to the tf2 tree in the background and fills the
+buffer automatically (it is tf2's "subscriber"). The guidance modes and
+`tf2_listener` have their own buffer and listener because they need to *read*
+the tree; the tf2 converters only have a broadcaster because they only need to
+*write* to it.
 
-Las flechas, a su vez, no significan llamadas directas entre funciones:
-representan publicación y consumo de datos. Un proceso publica un mensaje,
-DDS lo entrega, y otro proceso ejecuta su callback cuando le llega.
+The arrows, in turn, are not direct function calls: they stand for publishing
+and consuming data. One process publishes a message, DDS delivers it, and
+another process runs its callback when it arrives.
 
-Dentro de eso, sus etiquetas no son todas del mismo tipo:
+The arrow labels are not all of the same kind either:
 
-- `VehicleOdometry` y `TrajectorySetpoint` son **tipos de mensaje**, no
-  nombres de tópico. El tópico real de la odometría es
-  `/fmu/out/vehicle_odometry` (o `/px4_1/...` para el target; ver la tabla
-  más abajo).
-- `map -> interceptor/base_link` y `map -> target/base_link` no son
-  tópicos: son **transforms**, relaciones guardadas dentro del árbol tf2.
-- `target/velocity` sí es el **nombre literal de un tópico** ROS 2.
-- "posición del target" y "velocidad del target" no son el nombre de nada
-  real: son una descripción en español de qué dato se lee en ese punto (una
-  consulta al árbol tf2, o el último mensaje recibido en el tópico).
+- `VehicleOdometry` and `TrajectorySetpoint` are **message types**, not topic
+  names. The actual odometry topic is `/fmu/out/vehicle_odometry` (or
+  `/px4_1/...` for the target; see the table below).
+- `map -> interceptor/base_link` and `map -> target/base_link` are not topics:
+  they are **transforms**, relations stored inside the tf2 tree.
+- `target/velocity` is the **literal name of a ROS 2 topic**.
+- "target position" and "target velocity" are not the name of anything real:
+  they describe which data is read at that point (a query to the tf2 tree, or
+  the last message received on the topic).
 
-## Dos instancias PX4
+## Two PX4 instances
 
-| Vehículo | Instancia | Odometría usada por el código |
+| Vehicle | Instance | Odometry used by the code |
 | --- | ---: | --- |
 | Interceptor | `0` | `/fmu/out/vehicle_odometry` |
 | Target | `1` | `/px4_1/fmu/out/vehicle_odometry` |
 
-La instancia del target es importante: si se cambia el índice de PX4, también
-habría que adaptar el tópico en `target_tf2_odometry.cpp`.
+The target's instance matters: if the PX4 index changes, the topic in
+`target_tf2_odometry.cpp` has to change too.
 
-## Qué ocurre en un ciclo de datos
+## What happens in one data cycle
 
-Imaginemos que el target se mueve unos centímetros:
+Say the target moves a few centimetres:
 
-1. PX4 actualiza su estimación y publica un `VehicleOdometry`.
-2. `target_tf2_odometry` recibe el mensaje en una callback.
-3. Suma a esa posición el desplazamiento entre el origen del target y el del
-   interceptor (ver [Qué es `map` aquí](#qué-es-map-aquí-y-por-qué-hay-que-desplazar-al-target)),
-   y convierte posición, velocidad y orientación de NED a ENU.
-4. Publica una nueva relación `map -> target/base_link`. Si aún falta la
-   referencia global de alguno de los dos drones, no publica y avisa.
-5. Guarda la última velocidad y el timer publica `target/velocity`.
-6. Cada 50 ms, `pursuit_mode` o `PN_mode` consulta esa posición mediante tf2.
-7. El modo combina esa posición con su propia odometría (leída vía
-   `px4_ros2`) y calcula una velocidad —y, en PN, también una aceleración.
-8. `TrajectorySetpointType` entrega ese setpoint a PX4, y su controlador
-   intenta seguirlo.
-9. Cuando la distancia al target baja de 1 m, el modo avisa una vez
-   (`Target reached. Stopping pursuit.`) y se da por completado.
+1. PX4 updates its estimate and publishes a `VehicleOdometry`.
+2. `target_tf2_odometry` receives the message in a callback.
+3. It adds the offset between the target's origin and the interceptor's (see
+   [What `map` is here](#what-map-is-here-and-why-the-target-has-to-be-shifted)),
+   and converts position, velocity and orientation from NED to ENU.
+4. It publishes a new `map -> target/base_link` relation. If either drone's
+   global reference is still missing, it doesn't publish and logs a warning.
+5. It stores the latest velocity, and the timer publishes `target/velocity`.
+6. Every 50 ms, `pursuit_mode` or `PN_mode` looks up that position through tf2.
+7. The mode combines that position with its own odometry (read through
+   `px4_ros2`) and computes a velocity and, for PN, an acceleration too.
+8. `TrajectorySetpointType` hands that setpoint to PX4, and its controller
+   tries to follow it.
+9. When the distance to the target drops below 1 m, the mode reports it once
+   (`Target reached. Stopping pursuit.`) and marks itself as completed.
 
-El ciclo (pasos 1-8) se repite continuamente. El paso 9 no lo detiene: el modo
-sigue activo y `updateSetpoint` se sigue ejecutando, solo que deja de generar
-setpoints mientras el interceptor esté dentro de ese metro. Si el target se
-aleja, la persecución se reanuda sola y el aviso volverá a salir en el
-siguiente acercamiento (ver [Modos de guiado](Guidance-modes.md)). Quien decide
-de verdad cuándo termina el vuelo es PX4 o quien esté a los mandos, cambiando
-de modo. No existe una única función `followTarget()`; el comportamiento emerge
-de varios callbacks, timers y controladores.
+The cycle (steps 1-8) repeats continuously. Step 9 doesn't stop it: the mode
+stays active and `updateSetpoint` keeps running, it just stops generating
+setpoints while the interceptor is inside that metre. If the target moves
+away, the chase resumes on its own and the message will appear again on the
+next approach (see [Guidance modes](Guidance-modes.md)). What really ends the
+flight is PX4 or whoever is flying, by switching modes. There is no single
+`followTarget()` function; the behaviour comes from several callbacks, timers
+and controllers working together.
 
-## Marcos de referencia
+## Reference frames
 
-PX4 trabaja con coordenadas **NED**:
+PX4 works with **NED** coordinates:
 
-- `x`: norte.
-- `y`: este.
-- `z`: abajo.
+- `x`: north.
+- `y`: east.
+- `z`: down.
 
-ROS 2 y tf2 trabajan aquí con **ENU**:
+ROS 2 and tf2 work here with **ENU**:
 
-- `x`: este.
-- `y`: norte.
-- `z`: arriba.
+- `x`: east.
+- `y`: north.
+- `z`: up.
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
 flowchart LR
     subgraph NED["PX4 (NED)"]
         direction TB
-        Nx["x = norte"]
-        Ny["y = este"]
-        Nz["z = abajo"]
+        Nx["x = north"]
+        Ny["y = east"]
+        Nz["z = down"]
     end
     subgraph ENU["ROS 2 / tf2 (ENU)"]
         direction TB
-        Ex["x = este"]
-        Ey["y = norte"]
-        Ez["z = arriba"]
+        Ex["x = east"]
+        Ey["y = north"]
+        Ez["z = up"]
     end
-    Nx -.->|misma dirección física| Ey
-    Ny -.->|misma dirección física| Ex
-    Nz -.->|dirección invertida| Ez
+    Nx -.->|same physical direction| Ey
+    Ny -.->|same physical direction| Ex
+    Nz -.->|opposite direction| Ez
 ```
 
-Ningún eje conserva su letra: el `x` de NED es norte, pero el `x` de ENU es
-este. Solo `z` conserva la misma letra en ambos sistemas y, aun así, apunta en
-direcciones opuestas. Esta es la razón por la que una conversión de frame no es
-opcional ni cosmética.
+No axis keeps its letter: NED's `x` is north, but ENU's `x` is east. Only `z`
+keeps the same letter in both systems and, even so, it points in opposite
+directions. That is why a frame conversion is neither optional nor cosmetic.
 
-Los nodos `*_tf2_odometry` usan `px4_ros_com::frame_transforms` para convertir
-posición, velocidad y orientación. Después publican:
+The `*_tf2_odometry` nodes use `px4_ros_com::frame_transforms` to convert
+position, velocity and orientation. They then publish:
 
 - `map -> interceptor/base_link`
 - `map -> target/base_link`
 
-Los modos consultan la posición del target en ENU mediante tf2 y la convierten de
-nuevo a NED para hacer los cálculos que necesita PX4.
+The modes look up the target's position in ENU through tf2 and convert it back
+to NED to do the calculations PX4 needs.
 
-### Por qué no se mezclan los frames
+### Why frames must not be mixed
 
-Un vector `(1, 0, 0)` no significa lo mismo en todos los frames. Si se usa ENU
-como si fuera NED, el interceptor puede intentar moverse hacia el eje equivocado
-o invertir la dirección vertical. Por eso cada conversión debe estar cerca del
-dato que cambia de sistema y debe quedar documentada.
+A vector `(1, 0, 0)` doesn't mean the same thing in every frame. If ENU is
+used as if it were NED, the interceptor may try to move along the wrong axis
+or flip the vertical direction. That's why each conversion should sit close to
+the data that changes system, and be documented.
 
-En tf2, `map -> target/base_link` significa “dónde está el origen del frame del
-target expresado en map”; no significa que el target publique directamente una
-posición absoluta en todos los tópicos.
+In tf2, `map -> target/base_link` means "where the origin of the target's
+frame is, expressed in map"; it doesn't mean the target publishes an absolute
+position on every topic.
 
-### Qué es `map` aquí, y por qué hay que desplazar al target
+### What `map` is here, and why the target has to be shifted
 
-Cada PX4 mide su posición local desde **su propio origen**: el punto donde
-arrancó, que su estimador (el EKF) guarda como una coordenada geográfica
-(`ref_lat`, `ref_lon`, `ref_alt` del mensaje `VehicleLocalPosition`). Los dos
-drones arrancan en sitios distintos, así que cada uno cuenta desde un punto
-distinto, aunque ambos digan "estoy en (0, 0)" al empezar.
+Each PX4 measures its local position from **its own origin**: the point where
+it started, which its estimator (the EKF) stores as a geographic coordinate
+(`ref_lat`, `ref_lon`, `ref_alt` in the `VehicleLocalPosition` message). The
+two drones start in different places, so each one counts from a different
+point, even though both say "I'm at (0, 0)" at the start.
 
-En este proyecto, `map` es el origen **del interceptor**:
-`interceptor_tf2_odometry` publica su posición local tal cual. Si
-`target_tf2_odometry` hiciera lo mismo con la del target, estaría mezclando dos
-sistemas: con el target arrancado 20 m al norte, tf2 lo situaría igualmente en
-(0, 0) y los modos de guiado creerían tenerlo encima nada más empezar.
+In this project, `map` is the **interceptor's** origin:
+`interceptor_tf2_odometry` publishes its local position as it is. If
+`target_tf2_odometry` did the same with the target's, it would be mixing two
+systems: with the target started 20 m to the north, tf2 would still place it
+at (0, 0) and the guidance modes would think it was right on top of them from
+the start.
 
-Por eso `target_tf2_odometry` se suscribe también a `vehicle_local_position_v1`
-de las **dos** instancias, calcula el desplazamiento entre los dos orígenes a
-partir de sus coordenadas geográficas y se lo suma a la posición del target
-antes de publicar el transform. El cálculo se rehace con cada mensaje de
-odometría, así que si un EKF reinicia su origen en pleno vuelo, la corrección se
-ajusta sola.
+That's why `target_tf2_odometry` also subscribes to `vehicle_local_position_v1`
+of **both** instances, computes the offset between the two origins from their
+geographic coordinates and adds it to the target's position before publishing
+the transform. The calculation is redone with every odometry message, so if an
+EKF resets its origin mid-flight, the correction adjusts itself.
 
-Mientras alguna de las dos referencias no sea válida —por ejemplo, justo al
-arrancar, antes de que el EKF tenga posición global— el nodo **no publica** el
-transform y avisa en el log (como mucho una vez cada 5 segundos). Es preferible
-no publicar nada a publicar una posición que mezcla orígenes: sin transform, los
-modos de guiado ni siquiera dejan armar.
+While either reference is not valid (for example, right at start-up, before
+the EKF has a global position) the node **does not publish** the transform and
+logs a warning (at most once every 5 seconds). Publishing nothing is better
+than publishing a position that mixes origins: without a transform, the
+guidance modes don't even allow arming.
 
-La velocidad no necesita esa corrección: los ejes NED de los dos orígenes
-apuntan en la misma dirección, así que solo cambia la posición.
+Velocity doesn't need this correction: the NED axes of the two origins point
+in the same directions, so only the position changes.
 
-## Por qué existe `target/velocity`
+## Why `target/velocity` exists
 
-Un transform tf2 contiene posición y orientación, pero no la velocidad. Por eso
-`target_tf2_odometry` publica un mensaje `geometry_msgs/msg/TwistStamped` cada
-100 ms en `target/velocity`.
+A tf2 transform holds position and orientation, but not velocity. That's why
+`target_tf2_odometry` publishes a `geometry_msgs/msg/TwistStamped` message
+every 100 ms on `target/velocity`.
 
-`pursuit_mode` solo necesita la posición. `PN_mode` necesita además la velocidad
-del target para calcular la velocidad relativa y la rotación de la línea de
-visión.
+`pursuit_mode` only needs the position. `PN_mode` also needs the target's
+velocity to compute the relative velocity and the rotation of the line of
+sight.
 
-`TwistStamped` contiene un `header` y un `twist`. El header indica cuándo y en
-qué frame se interpreta el dato; `twist.linear` contiene la velocidad lineal.
-En este proyecto no se usa la velocidad angular.
+`TwistStamped` holds a `header` and a `twist`. The header says when and in
+which frame the data applies; `twist.linear` holds the linear velocity. The
+angular velocity is not used in this project.
 
-## Qué pasa si un componente deja de funcionar
+## What happens if a component stops working
 
-| Componente ausente | Síntoma probable |
+| Missing component | Likely symptom |
 | --- | --- |
-| PX4 interceptor | No hay odometría propia ni control útil. |
-| PX4 target | No aparece el frame del target. |
-| Agente DDS | ROS 2 no recibe los tópicos de PX4. |
-| `target_tf2_odometry` | Falta `target/base_link` y `target/velocity`. |
-| Referencia global de algún dron | No aparece `target/base_link` y el log avisa de que falta la referencia; los modos no dejan armar. |
-| `interceptor_tf2_odometry` | Falta el frame del interceptor para diagnóstico. |
-| `target/velocity` | PN no supera su comprobación de armado. |
-| Modo PX4 | Hay datos, pero no se generan setpoints de guiado. |
+| PX4 interceptor | No own odometry and no useful control. |
+| PX4 target | The target frame doesn't appear. |
+| DDS agent | ROS 2 doesn't receive the PX4 topics. |
+| `target_tf2_odometry` | `target/base_link` and `target/velocity` are missing. |
+| Global reference of either drone | `target/base_link` doesn't appear and the log warns that the reference is missing; the modes won't arm. |
+| `interceptor_tf2_odometry` | The interceptor frame is missing for diagnostics. |
+| `target/velocity` | PN fails its arming check. |
+| PX4 mode | There is data, but no guidance setpoints are generated. |
 
-Las filas están ordenadas para diagnosticar de arriba a abajo: primero
-transporte, después transformación y por último control.
+The rows are ordered for diagnosing from top to bottom: transport first, then
+transformation and finally control.
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Ejecución de la simulación](Simulation.md) · ➡️ Siguiente: [Nodos de odometría y diagnóstico](Nodes-and-topics.md)
+🏠 [Home](Home.md) · ⬅️ Previous: [Running the simulation](Simulation.md) · ➡️ Next: [Nodes, topics and diagnostics](Nodes-and-topics.md)

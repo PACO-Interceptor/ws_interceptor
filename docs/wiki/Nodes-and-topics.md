@@ -1,58 +1,56 @@
-# Nodos, tópicos y diagnóstico
+# Nodes, topics and diagnostics
 
-Esta página describe qué nodos y tópicos usa el paquete y cómo se conectan
-entre sí; al final explica cómo inspeccionarlos para diagnosticar problemas.
-Los comandos de esta página solo observan el sistema, nunca modifican el
-código.
+This page describes which nodes and topics the package uses and how they
+connect; at the end it explains how to inspect them to diagnose problems. The
+commands on this page only observe the system, they never change the code.
 
-## Nodos principales
+## Main nodes
 
-| Ejecutable | Responsabilidad |
+| Executable | Job |
 | --- | --- |
-| `interceptor_tf2_odometry` | Convierte la odometría de la instancia 0 y publica el frame del interceptor. |
-| `target_tf2_odometry` | Convierte la odometría de la instancia 1, la desplaza al origen del interceptor (usando `vehicle_local_position_v1` de las dos instancias) y publica el frame del target y `target/velocity`. |
-| `pursuit_mode` | Modo de persecución pura basado en la posición. |
-| `PN_mode` | Modo de navegación proporcional basado en posición y velocidad. |
+| `interceptor_tf2_odometry` | Converts the odometry of instance 0 and publishes the interceptor frame. |
+| `target_tf2_odometry` | Converts the odometry of instance 1, shifts it to the interceptor's origin (using `vehicle_local_position_v1` of both instances) and publishes the target frame and `target/velocity`. |
+| `pursuit_mode` | Pure pursuit mode based on position. |
+| `PN_mode` | Proportional navigation mode based on position and velocity. |
 
-Un **ejecutable** es un archivo que el sistema puede iniciar; un nodo es la
-instancia ROS 2 que ese programa crea al arrancar. Normalmente hay una
-relación uno a uno entre ambos, pero no son conceptos idénticos: el mismo
-ejecutable podría iniciar varias instancias con nombres o namespaces
-distintos. Una **instancia** es una copia concreta de un programa en
-funcionamiento; un **namespace** es un prefijo de nombres que evita que dos
-copias choquen entre sí.
+An **executable** is a file the system can start; a node is the ROS 2
+instance that program creates when it starts. Usually there's a one-to-one
+relation between them, but they're not the same concept: the same executable
+could start several instances with different names or namespaces. An
+**instance** is a specific running copy of a program; a **namespace** is a
+name prefix that keeps two copies from clashing.
 
-## Nodos auxiliares
+## Helper nodes
 
-| Ejecutable | Uso |
+| Executable | Use |
 | --- | --- |
-| `vehicle_odometry_subscriber` | Imprime por pantalla la odometría recibida; el tópico y el nombre de vehículo de la cabecera dependen de los parámetros `vehicle_name`/`odometry_topic` (el launch lo arranca dos veces, con valores distintos para cada dron). |
-| `tf2_listener` | Muestra la transformación relativa y la velocidad del target una vez por segundo. |
+| `vehicle_odometry_subscriber` | Prints the received odometry; the topic and the vehicle name in the header come from the `vehicle_name`/`odometry_topic` parameters (the launch starts it twice, with different values for each drone). |
+| `tf2_listener` | Shows the relative transform and the target's velocity once per second. |
 
-Los suscriptores de odometría son herramientas de inspección, no forman parte
-del cálculo de control. `tf2_listener` está comentado en el launch por defecto.
+The odometry subscribers are inspection tools, not part of the control
+calculation. `tf2_listener` is commented out in the launch by default.
 
-## Grafo de nodos y tópicos
+## Node and topic graph
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
 flowchart LR
-    subgraph PX0["PX4 interceptor (instancia 0)"]
+    subgraph PX0["PX4 interceptor (instance 0)"]
         O0["/fmu/out/vehicle_odometry"]
         L0["/fmu/out/vehicle_local_position_v1"]
     end
-    subgraph PX1["PX4 target (instancia 1)"]
+    subgraph PX1["PX4 target (instance 1)"]
         O1["/px4_1/fmu/out/vehicle_odometry"]
         L1["/px4_1/fmu/out/vehicle_local_position_v1"]
     end
 
     O0 --> ITF[interceptor_tf2_odometry]
-    O0 --> IVS["interceptor_vehicle_odometry_subscriber<br/>(diagnóstico)"]
+    O0 --> IVS["interceptor_vehicle_odometry_subscriber<br/>(diagnostics)"]
 
     O1 --> TTF[target_tf2_odometry]
     L0 --> TTF
     L1 --> TTF
-    O1 --> TVS["target_vehicle_odometry_subscriber<br/>(diagnóstico)"]
+    O1 --> TVS["target_vehicle_odometry_subscriber<br/>(diagnostics)"]
 
     ITF --> TFI[("map -> interceptor/base_link")]
     TTF --> TFT[("map -> target/base_link")]
@@ -62,79 +60,79 @@ flowchart LR
     TFT --> PN[PN_mode]
     VEL --> PN
 
-    TFI --> LISTENER["tf2_listener<br/>(comentado en el launch)"]
+    TFI --> LISTENER["tf2_listener<br/>(commented out in the launch)"]
     TFT --> LISTENER
     O1 --> LISTENER
 ```
 
-Los dos nodos de diagnóstico son el mismo ejecutable,
-`vehicle_odometry_subscriber`, arrancado dos veces: el launch le da a cada uno
-su nombre y el tópico que debe escuchar. Por eso en el diagrama cada uno cuelga
-de la odometría del vehículo que le corresponde. Si lanzas uno a mano con
-`ros2 run`, recuerda pasarle esos parámetros; si no, usará los valores por
-defecto, que son los del interceptor.
+The two diagnostic nodes are the same executable,
+`vehicle_odometry_subscriber`, started twice: the launch gives each one its
+name and the topic it should listen to. That's why in the diagram each one
+hangs off the odometry of its own vehicle. If you start one by hand with
+`ros2 run`, remember to pass those parameters; otherwise it uses the defaults,
+which are the interceptor's.
 
-## Tabla de entradas y salidas
+## Inputs and outputs
 
-| Nodo | Entrada | Salida |
+| Node | Input | Output |
 | --- | --- | --- |
 | `target_tf2_odometry` | `/px4_1/fmu/out/vehicle_odometry`, `/fmu/out/vehicle_local_position_v1`, `/px4_1/fmu/out/vehicle_local_position_v1` | `map -> target/base_link`, `target/velocity` |
 | `interceptor_tf2_odometry` | `/fmu/out/vehicle_odometry` | `map -> interceptor/base_link` |
-| `pursuit_mode` | tf2 target, odometría propia | setpoint de trayectoria |
-| `PN_mode` | tf2 target, odometría propia, `target/velocity` | setpoint de trayectoria |
-| suscriptores de diagnóstico | `VehicleOdometry` | texto en consola |
-| `tf2_listener` | tf2 y odometría target | texto en consola |
+| `pursuit_mode` | target from tf2, own odometry | trajectory setpoint |
+| `PN_mode` | target from tf2, own odometry, `target/velocity` | trajectory setpoint |
+| diagnostic subscribers | `VehicleOdometry` | console text |
+| `tf2_listener` | tf2 and target odometry | console text |
 
-La tabla es una vista de dependencias: si a un nodo le falta una entrada, el
-problema suele estar en quien debería producir ese dato, no en el nodo mismo.
+The table is a dependency view: if a node is missing an input, the problem is
+usually in whoever should produce that data, not in the node itself.
 
-### Por qué unos tópicos llevan `_v1` y otros no
+### Why some topics end in `_v1` and others don't
 
-Muchos mensajes de PX4 llevan un número de versión (`MESSAGE_VERSION`) que
-forma parte del nombre del tópico, como se explica en
-[Instalación y compilación](Installation-and-build.md#px4). Con el `px4_msgs`
-vendorizado, `VehicleLocalPosition` va por la versión 1 y se publica en
-`/fmu/out/vehicle_local_position_v1`, mientras que `VehicleOdometry` está en la
-versión 0 y se publica sin sufijo. Por eso `target_tf2_odometry` no escribe el
-sufijo a mano: lo calcula con `px4_ros2::getMessageNameVersion` a partir del
-tipo del mensaje, y así sigue funcionando si esa versión cambia. Si copias un
-nombre de tópico de esta página y `ros2 topic echo` no muestra nada, comprueba
-primero el nombre exacto con `ros2 topic list | grep vehicle_local_position`.
+Many PX4 messages carry a version number (`MESSAGE_VERSION`) that is part of
+the topic name, as explained in
+[Installation and build](Installation-and-build.md#px4). With the vendored
+`px4_msgs`, `VehicleLocalPosition` is at version 1 and is published on
+`/fmu/out/vehicle_local_position_v1`, while `VehicleOdometry` is at version 0
+and is published without a suffix. That's why `target_tf2_odometry` doesn't
+write the suffix by hand: it computes it with `px4_ros2::getMessageNameVersion`
+from the message type, so it keeps working if that version changes. If you
+copy a topic name from this page and `ros2 topic echo` shows nothing, first
+check the exact name with `ros2 topic list | grep vehicle_local_position`.
 
-## Parámetros
+## Parameters
 
-Los modos declaran estos parámetros (`target_frame` los dos; `target_velocity_topic` solo PN):
+The modes declare these parameters (`target_frame` both of them;
+`target_velocity_topic` only PN):
 
-| Parámetro | Valor por defecto | Uso |
+| Parameter | Default | Use |
 | --- | --- | --- |
-| `target_frame` | `target/base_link` | Frame tf2 que representa al target. |
-| `target_velocity_topic` | `target/velocity` | Tópico de velocidad; solo lo declara `PN_mode`, que es el único que necesita la velocidad. |
+| `target_frame` | `target/base_link` | tf2 frame that represents the target. |
+| `target_velocity_topic` | `target/velocity` | Velocity topic; only declared by `PN_mode`, the only one that needs the velocity. |
 
-Los conversores tf2 declaran `vehicle_name`, con valor `interceptor` o `target`
-según el ejecutable. `vehicle_odometry_subscriber` declara los mismos dos
-parámetros, `vehicle_name` (por defecto `interceptor`) y `odometry_topic` (por
-defecto `/fmu/out/vehicle_odometry`); el launch se los fija a valores distintos
-en cada una de sus dos instancias.
+The tf2 converters declare `vehicle_name`, set to `interceptor` or `target`
+depending on the executable. `vehicle_odometry_subscriber` declares the same
+two parameters, `vehicle_name` (default `interceptor`) and `odometry_topic`
+(default `/fmu/out/vehicle_odometry`); the launch sets them to different
+values for each of its two instances.
 
-Los parámetros son configuración, no mensajes. Se consultan al crear el nodo y
-permiten cambiar nombres sin modificar el binario. Para inspeccionarlos:
+Parameters are configuration, not messages. They're read when the node is
+created and let you change names without changing the binary. To inspect them:
 
 ```bash
 ros2 param list /pursuit_mode
 ros2 param get /pursuit_mode target_frame
 ```
 
-El nombre exacto del nodo depende de cómo lo registre `NodeWithMode` y de si se
-usa un namespace.
+The exact node name depends on how `NodeWithMode` registers it and on whether
+a namespace is used.
 
-## Inspección desde otra terminal
+## Inspecting from another terminal
 
-El launch (o cualquier nodo arrancado con `ros2 run`) ocupa su propia
-terminal mostrando sus logs; para consultar el sistema mientras sigue
-corriendo, abre una terminal nueva y carga primero ROS 2 y el workspace
-(`source install/setup.bash`).
+The launch (or any node started with `ros2 run`) takes up its own terminal
+showing its logs; to query the system while it keeps running, open a new
+terminal and load ROS 2 and the workspace first (`source install/setup.bash`).
 
-Comprobación rápida:
+Quick check:
 
 ```bash
 ros2 node list
@@ -145,18 +143,18 @@ ros2 topic hz /target/velocity
 ros2 run tf2_tools view_frames
 ```
 
-- `node list` y `topic list` muestran qué nodos y tópicos existen ahora
-  mismo: si falta uno que esperabas, ese es el primer indicio de qué
-  componente no ha arrancado.
-- `topic echo` imprime en vivo los mensajes que pasan por un tópico —sirve
-  para comprobar que hay datos de verdad, no solo que el tópico existe.
-- `topic hz` mide la frecuencia real de publicación; compárala con la
-  esperada (por ejemplo, unos 10 Hz para `target/velocity`).
-- `view_frames` no imprime nada en la terminal: genera un archivo PDF en la
-  carpeta actual con un dibujo de todo el árbol tf2, útil para ver de un
-  vistazo qué frames existen y cómo se relacionan.
+- `node list` and `topic list` show which nodes and topics exist right now:
+  if one you expected is missing, that's the first hint of which component
+  didn't start.
+- `topic echo` prints the messages going through a topic live; it tells you
+  there really is data, not just that the topic exists.
+- `topic hz` measures the actual publishing rate; compare it with the expected
+  one (for example, about 10 Hz for `target/velocity`).
+- `view_frames` prints nothing in the terminal: it writes a PDF in the current
+  folder with a drawing of the whole tf2 tree, handy to see at a glance which
+  frames exist and how they relate.
 
-Para ir más allá de "existe o no existe":
+To go beyond "exists or not":
 
 ```bash
 ros2 node info /target_tf2_frame_publisher
@@ -165,29 +163,28 @@ ros2 interface show geometry_msgs/msg/TwistStamped
 ros2 run tf2_ros tf2_echo map target/base_link
 ```
 
-`node info` muestra las conexiones de un nodo concreto (qué publica y a qué
-se suscribe); `topic info --verbose` muestra sus publishers, subscribers y
-QoS; `interface show` enseña los campos que tiene un tipo de mensaje; y
-`tf2_echo` imprime en tiempo real una transformación concreta del árbol tf2,
-en vez de todo el árbol como `view_frames`.
+`node info` shows a specific node's connections (what it publishes and what it
+subscribes to); `topic info --verbose` shows a topic's publishers, subscribers
+and QoS; `interface show` shows the fields of a message type; and `tf2_echo`
+prints one specific transform of the tf2 tree in real time, instead of the
+whole tree like `view_frames`.
 
-Los nombres absolutos de los tópicos comienzan por `/`. En el código de los
-modos, `target/velocity` se usa como nombre relativo y ROS 2 lo resuelve dentro
-del namespace actual.
+Absolute topic names start with `/`. In the mode code, `target/velocity` is
+used as a relative name and ROS 2 resolves it inside the current namespace.
 
-## Qué mirar primero si algo falla
+## What to check first if something fails
 
-1. ¿Aparecen los dos `VehicleOdometry` con `ros2 topic list`?
-2. ¿Está el agente conectado en el puerto `8888`?
-3. ¿Existen los dos frames publicados por `tf2`?
-4. ¿Está `target/velocity` publicando datos?
-5. ¿Se ha cargado `source install/setup.bash` en la terminal?
+1. Do both `VehicleOdometry` topics show up in `ros2 topic list`?
+2. Is the agent connected on port `8888`?
+3. Do both frames published through tf2 exist?
+4. Is `target/velocity` publishing data?
+5. Has `source install/setup.bash` been run in that terminal?
 
-Anota siempre tres cosas al diagnosticar: el nombre exacto que aparece en
-`ros2 topic list`, el tipo que devuelve `ros2 topic type` y la frecuencia de
-`ros2 topic hz`. Los nombres parecidos pero no idénticos son una causa muy
-frecuente de errores ROS 2.
+When diagnosing, always note three things: the exact name shown by
+`ros2 topic list`, the type returned by `ros2 topic type` and the rate from
+`ros2 topic hz`. Names that look alike but aren't identical are a very common
+cause of ROS 2 errors.
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Arquitectura y flujo de datos](Architecture.md) · ➡️ Siguiente: [Modos de guiado](Guidance-modes.md)
+🏠 [Home](Home.md) · ⬅️ Previous: [Architecture and data flow](Architecture.md) · ➡️ Next: [Guidance modes](Guidance-modes.md)

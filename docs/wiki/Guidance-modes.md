@@ -1,209 +1,207 @@
-# Modos de guiado
+# Guidance modes
 
-Un **modo de guiado** es una estrategia que decide hacia dónde debe moverse el
-interceptor. No mueve directamente los motores: calcula referencias y PX4 se
-encarga del control de vuelo. Un **algoritmo** es simplemente una receta
-ordenada de cálculos para obtener una decisión.
+A **guidance mode** is a strategy that decides where the interceptor should
+move. It doesn't drive the motors directly: it computes references and PX4
+takes care of flight control. An **algorithm** is just an ordered recipe of
+calculations that leads to a decision.
 
-## Palabras de movimiento y matemáticas
+## Motion and maths terms
 
-| Término | Significado sencillo |
+| Term | Plain meaning |
 | --- | --- |
-| **Posición** | Dónde está el vehículo, normalmente con tres números: este/oeste, norte/sur y altura. |
-| **Velocidad** | Qué tan rápido y hacia dónde se mueve. |
-| **Aceleración** | Cómo cambia la velocidad. |
-| **Yaw** | Giro del vehículo alrededor del eje vertical; visto desde arriba, indica hacia dónde apunta el morro. |
-| **Vector** | Grupo ordenado de números que representa una dirección y un tamaño. |
-| **Norma** | Longitud o tamaño de un vector; aquí se usa para calcular una distancia. |
-| **Normalizar** | Convertir un vector en uno de longitud 1 conservando su dirección. |
-| **Velocidad relativa** | Velocidad del target comparada con la del interceptor: target menos interceptor. |
-| **Línea de visión (LOS)** | Flecha imaginaria que va desde el interceptor hasta el target. |
-| **Producto vectorial** | Operación entre vectores que ayuda a medir cómo cambia la dirección de una línea. |
-| **Armar** | Dar permiso a PX4 para que el vehículo pueda activar sus motores/controladores. |
+| **Position** | Where the vehicle is, usually as three numbers: east/west, north/south and height. |
+| **Velocity** | How fast and in which direction it moves. |
+| **Acceleration** | How the velocity changes. |
+| **Yaw** | Rotation of the vehicle around the vertical axis; seen from above, where the nose points. |
+| **Vector** | An ordered group of numbers that represents a direction and a size. |
+| **Norm** | The length or size of a vector; used here to compute a distance. |
+| **Normalise** | Turn a vector into one of length 1 while keeping its direction. |
+| **Relative velocity** | The target's velocity compared with the interceptor's: target minus interceptor. |
+| **Line of sight (LOS)** | Imaginary arrow from the interceptor to the target. |
+| **Cross product** | An operation between vectors that helps measure how the direction of a line changes. |
+| **Arm** | Give PX4 permission so the vehicle can enable its motors/controllers. |
 
-Por ejemplo, si el interceptor está en `(0, 0, 0)` y el target en
-`(10, 0, 0)`, la línea de visión apunta en la dirección positiva del primer
-eje y su norma es `10`. No hace falta calcular a mano los productos: Eigen y
-las funciones de la biblioteca realizan esas operaciones; lo importante es saber
-qué representa cada resultado.
+For example, if the interceptor is at `(0, 0, 0)` and the target at
+`(10, 0, 0)`, the line of sight points along the positive first axis and its
+norm is `10`. There's no need to compute the products by hand: Eigen and the
+library functions do those operations; what matters is knowing what each
+result represents.
 
-Los dos modos son clases C++ derivadas de `px4_ros2::ModeBase` y se envuelven
-con `px4_ros2::NodeWithMode`. Esto permite que PX4 los conozca como modos de
-vuelo personalizados.
+Both modes are C++ classes derived from `px4_ros2::ModeBase` and wrapped in
+`px4_ros2::NodeWithMode`. This lets PX4 know them as custom flight modes.
 
-## Ciclo común
+## Common cycle
 
-Cada modo:
+Each mode:
 
-1. Crea un `TrajectorySetpointType`, el canal de salida de la biblioteca
-   `px4_ros2` para enviar órdenes a PX4 (velocidad, aceleración y yaw).
-2. Crea un `OdometryLocalPosition`, el canal de entrada equivalente para
-   leer la posición y velocidad **propias del interceptor** —el vehículo
-   que ejecuta el modo—, sin pasar por tf2 ni por ningún tópico.
-3. Busca `map -> target/base_link` cada 50 ms.
-4. Rechaza el armado si aún no hay datos válidos del target.
-5. Calcula un setpoint durante `updateSetpoint`.
-6. Llama a `completed(Success)` la primera vez que la distancia baja de 1 m.
+1. Creates a `TrajectorySetpointType`, the output channel of the `px4_ros2`
+   library for sending commands to PX4 (velocity, acceleration and yaw).
+2. Creates an `OdometryLocalPosition`, the matching input channel to read the
+   **interceptor's own** position and velocity (the vehicle running the
+   mode), without going through tf2 or any topic.
+3. Looks up `map -> target/base_link` every 50 ms.
+4. Refuses to arm if there is no valid target data yet.
+5. Computes a setpoint in `updateSetpoint`.
+6. Calls `completed(Success)` the first time the distance drops below 1 m.
 
-Si tf2 todavía no conoce el target, el modo muestra un aviso y no genera un
-setpoint válido.
+If tf2 doesn't know the target yet, the mode logs a warning and doesn't
+generate a valid setpoint.
 
-`completed()` no apaga PX4 ni aterriza el vehículo: solo le indica a la
-biblioteca `px4_ros2` que este modo ha terminado su tarea con éxito. Qué pasa
-después (aterrizar, mantenerse en el sitio, cambiar de modo...) lo decide PX4
-o quien esté volando, no este código.
+`completed()` doesn't shut PX4 down or land the vehicle: it only tells the
+`px4_ros2` library that this mode has finished its task successfully. What
+happens next (landing, holding position, switching modes...) is decided by
+PX4 or whoever is flying, not by this code.
 
-Como el modo sigue activo, `updateSetpoint` se sigue ejecutando cada ciclo
-mientras el interceptor esté a menos de 1 m. Un indicador interno
-(`_target_reached`) hace que el aviso y `completed()` salgan **una sola vez por
-acercamiento**: se reinicia cuando el interceptor vuelve a alejarse más de 1 m
-—y entonces reanuda la persecución— y también al activar el modo. Sin ese
-indicador, el log recibía decenas de líneas por segundo.
+Since the mode stays active, `updateSetpoint` keeps running every cycle while
+the interceptor is within 1 m. An internal flag (`_target_reached`) makes the
+message and `completed()` happen **only once per approach**: it is reset when
+the interceptor moves more than 1 m away again (and the chase resumes) and
+also when the mode is activated. Without that flag, the log got dozens of
+lines per second.
 
-## Qué es un setpoint
+## What a setpoint is
 
-Un setpoint no es una orden instantánea de “mueve el motor así”. Es una
-referencia para el controlador de PX4. Este proyecto entrega principalmente
-velocidad, yaw y, en PN, aceleración. PX4 combina esa referencia con sus
-estimadores, límites y controladores internos.
+A setpoint is not an instant "move the motor like this" command. It is a
+reference for PX4's controller. This project mainly sends velocity, yaw and,
+in PN, acceleration. PX4 combines that reference with its estimators, limits
+and internal controllers.
 
-Esto explica por qué cambiar una constante de velocidad no equivale a
-teletransportar el dron: el autopiloto sigue aplicando su propia dinámica y
-restricciones.
+That's why changing a speed constant doesn't teleport the drone: the
+autopilot still applies its own dynamics and constraints.
 
-## `pursuit_mode`: persecución pura
+## `pursuit_mode`: pure pursuit
 
-Este modo apunta directamente hacia la posición actual del target:
+This mode points straight at the target's current position:
 
-- Velocidad horizontal máxima: `5 m/s`.
-- Velocidad vertical limitada a `2 m/s`.
-- El yaw se orienta hacia la línea de visión horizontal.
-- No necesita `target/velocity`.
+- Maximum horizontal speed: `5 m/s`.
+- Vertical speed limited to `2 m/s`.
+- Yaw follows the horizontal line of sight.
+- It doesn't need `target/velocity`.
 
-Es el algoritmo más sencillo para entender el flujo completo: posición del
-target, diferencia con la posición propia y velocidad hacia el target.
+It's the simplest algorithm for understanding the whole flow: target
+position, difference with our own position, and velocity towards the target.
 
-### Ejemplo conceptual
+### Conceptual example
 
-Si el target está 10 m al este y 2 m por encima, el vector horizontal se
-normaliza y se multiplica por `5 m/s`; la componente vertical se limita a
-`2 m/s`. Si el target está casi exactamente encima, no se recalcula el yaw
-horizontal y se conserva el último yaw válido.
+If the target is 10 m to the east and 2 m above, the horizontal vector is
+normalised and multiplied by `5 m/s`; the vertical component is limited to
+`2 m/s`. If the target is almost exactly above, the horizontal yaw is not
+recomputed and the last valid yaw is kept.
 
-### De la posición al setpoint, paso a paso
+### From position to setpoint, step by step
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
 flowchart LR
-    A["los = posición_target - posición_propia"] --> B{"¿norm(los) < 1 m?"}
-    B -->|sí| C["si es el primer ciclo dentro de 1 m:<br/>aviso + completed(Success)"]
-    B -->|no| D["los_horizontal = los sin el eje vertical"]
-    D --> E{"¿norm(los_horizontal) > 0.1 m?"}
-    E -->|sí| F["velocidad_horizontal =<br/>normalizar(los_horizontal) × 5 m/s<br/>yaw = atan2(los_horizontal)"]
-    E -->|no| G["se conserva el último yaw válido"]
-    D --> H["velocidad_vertical =<br/>clamp(los.z, -2 m/s, 2 m/s)"]
-    F --> I["TrajectorySetpointType::update(velocidad, sin aceleración, yaw)"]
+    A["los = target_position - own_position"] --> B{"norm(los) < 1 m?"}
+    B -->|yes| C["if it's the first cycle within 1 m:<br/>message + completed(Success)"]
+    B -->|no| D["los_horizontal = los without the vertical axis"]
+    D --> E{"norm(los_horizontal) > 0.1 m?"}
+    E -->|yes| F["horizontal_velocity =<br/>normalise(los_horizontal) × 5 m/s<br/>yaw = atan2(los_horizontal)"]
+    E -->|no| G["keep the last valid yaw"]
+    D --> H["vertical_velocity =<br/>clamp(los.z, -2 m/s, 2 m/s)"]
+    F --> I["TrajectorySetpointType::update(velocity, no acceleration, yaw)"]
     H --> I
     G --> I
 ```
 
-Este diagrama es literalmente el cuerpo de `updateSetpoint` en
-`pursuit_mode.cpp`, sin código: cada caja es una línea o un pequeño grupo de
-líneas, y cada flecha es el orden real en que se ejecutan.
+This diagram is literally the body of `updateSetpoint` in `pursuit_mode.cpp`,
+without the code: each box is a line or a small group of lines, and each arrow
+is the real order in which they run.
 
-## `PN_mode`: navegación proporcional
+## `PN_mode`: proportional navigation
 
-Este modo usa:
+This mode uses:
 
-- La posición del target obtenida de tf2.
-- La velocidad del target en `target/velocity`.
-- La velocidad propia del interceptor.
-- La velocidad relativa entre ambos.
+- The target position from tf2.
+- The target velocity from `target/velocity`.
+- The interceptor's own velocity.
+- The relative velocity between the two.
 
-Calcula la rotación de la línea de visión y genera una aceleración de navegación
-proporcional. Sus límites actuales son:
+It computes the rotation of the line of sight and generates a proportional
+navigation acceleration. Its current limits are:
 
-| Constante | Valor | Significado |
+| Constant | Value | Meaning |
 | --- | ---: | --- |
-| `kMaxHorizontalSpeed` | `7 m/s` | Velocidad horizontal máxima. |
-| `kMaxVerticalSpeed` | `2 m/s` | Velocidad vertical máxima. |
-| `kNavigationConstant` | `3.5` | Ganancia de navegación proporcional. |
-| `kMaxAcceleration` | `3 m/s²` | Aceleración máxima solicitada. |
-| `kPnMinRange` | `7 m` | Por debajo de esta distancia no aplica aceleración PN. |
+| `kMaxHorizontalSpeed` | `7 m/s` | Maximum horizontal speed. |
+| `kMaxVerticalSpeed` | `2 m/s` | Maximum vertical speed. |
+| `kNavigationConstant` | `3.5` | Proportional navigation gain. |
+| `kMaxAcceleration` | `3 m/s²` | Maximum requested acceleration. |
+| `kPnMinRange` | `7 m` | Below this distance no PN acceleration is applied. |
 
-PN no puede funcionar correctamente si `target_tf2_odometry` no publica
-`target/velocity`. El modo también bloquea el armado hasta recibir posición y
-velocidad.
+PN can't work properly if `target_tf2_odometry` doesn't publish
+`target/velocity`. The mode also blocks arming until it has received both
+position and velocity.
 
-### Cómo se calcula la aceleración PN
+### How the PN acceleration is computed
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"lineColor": "#cccccc", "edgeLabelBackground": "#1e1e1e"}}}%%
 flowchart TD
-    LOS["los = posición_target - posición_propia"]
-    VREL["v_rel = velocidad_target - velocidad_propia"]
-    LOS --> NORM{"¿norm(los) < 1 m?"}
-    NORM -->|sí| DONE["si es el primer ciclo dentro de 1 m:<br/>aviso + completed(Success)"]
-    NORM -->|no| RANGE{"¿norm(los) < kPnMinRange (7 m)?"}
-    RANGE -->|sí| ZERO["a_cmd = 0<br/>(solo se envía la persecución)"]
-    RANGE -->|no| OMEGA["ω = (los × v_rel) / (norm²(los) + 1e-6)<br/>giro de la línea de visión"]
+    LOS["los = target_position - own_position"]
+    VREL["v_rel = target_velocity - own_velocity"]
+    LOS --> NORM{"norm(los) < 1 m?"}
+    NORM -->|yes| DONE["if it's the first cycle within 1 m:<br/>message + completed(Success)"]
+    NORM -->|no| RANGE{"norm(los) < kPnMinRange (7 m)?"}
+    RANGE -->|yes| ZERO["a_cmd = 0<br/>(only the pursuit is sent)"]
+    RANGE -->|no| OMEGA["ω = (los × v_rel) / (norm²(los) + 1e-6)<br/>line-of-sight rotation"]
     VREL --> OMEGA
     OMEGA --> ACMD["a_cmd = kNavigationConstant × (ω × v_rel)"]
-    ACMD --> CLAMP{"¿norm(a_cmd) > kMaxAcceleration (3 m/s²)?"}
-    CLAMP -->|sí| LIMIT["a_cmd se normaliza y se recorta a 3 m/s²"]
-    CLAMP -->|no| KEEP["a_cmd se mantiene igual"]
-    ZERO --> OUT["TrajectorySetpointType::update(velocidad, a_cmd, yaw)"]
+    ACMD --> CLAMP{"norm(a_cmd) > kMaxAcceleration (3 m/s²)?"}
+    CLAMP -->|yes| LIMIT["a_cmd is normalised and capped at 3 m/s²"]
+    CLAMP -->|no| KEEP["a_cmd stays the same"]
+    ZERO --> OUT["TrajectorySetpointType::update(velocity, a_cmd, yaw)"]
     LIMIT --> OUT
     KEEP --> OUT
 ```
 
-En el diagrama, `×` significa cosas distintas según lo que multiplique: entre
-`los` y `v_rel`, o entre `ω` y `v_rel`, es el **producto vectorial** de la
-tabla de arriba (dos vectores); entre `kNavigationConstant` y un vector, es
-una multiplicación normal por un número.
+In the diagram, `×` means different things depending on what it multiplies:
+between `los` and `v_rel`, or between `ω` and `v_rel`, it is the **cross
+product** from the table above (two vectors); between `kNavigationConstant`
+and a vector, it is a normal multiplication by a number.
 
-La velocidad horizontal/vertical de persecución (igual que en `pursuit_mode`,
-pero con `7 m/s` en vez de `5 m/s`) siempre se calcula y se envía; `a_cmd` es
-un extra que solo se activa por encima de `kPnMinRange`. Por eso PN nunca deja
-de perseguir aunque la aceleración PN esté desactivada.
+The horizontal/vertical pursuit velocity (the same as in `pursuit_mode`, but
+with `7 m/s` instead of `5 m/s`) is always computed and sent; `a_cmd` is an
+extra that is only switched on above `kPnMinRange`. That's why PN never stops
+chasing, even when the PN acceleration is off.
 
-### Intuición de navegación proporcional
+### The intuition behind proportional navigation
 
-PN no intenta apuntar únicamente a la posición actual. Observa cómo gira la
-línea que une interceptor y target. Si esa línea gira, existe riesgo de que el
-target cruce por delante sin ser alcanzado; la aceleración PN intenta corregir
-esa geometría. La ganancia `kNavigationConstant` hace la corrección más o menos
-agresiva, pero no elimina los límites de seguridad.
+PN doesn't only aim at the current position. It looks at how the line joining
+interceptor and target rotates. If that line rotates, the target may cross in
+front without being reached; the PN acceleration tries to correct that
+geometry. The gain `kNavigationConstant` makes the correction more or less
+aggressive, but it doesn't remove the safety limits.
 
-## Comparación
+## Comparison
 
-| Característica | Pursuit | PN |
+| Feature | Pursuit | PN |
 | --- | --- | --- |
-| Posición del target | Sí | Sí |
-| Velocidad del target | No | Sí |
-| Aceleración calculada | No | Sí |
-| Velocidad horizontal máxima | `5 m/s` | `7 m/s` |
-| Complejidad | Menor | Mayor |
+| Target position | Yes | Yes |
+| Target velocity | No | Yes |
+| Computed acceleration | No | Yes |
+| Maximum horizontal speed | `5 m/s` | `7 m/s` |
+| Complexity | Lower | Higher |
 
-Las constantes están dentro de los archivos fuente; no hay parámetros externos
-ni reconfiguración dinámica.
+The constants live in the source files; there are no external parameters or
+dynamic reconfiguration.
 
-## Datos válidos y datos antiguos
+## Valid data and stale data
 
-Las banderas `_target_valid` y `_target_velocity_valid` solo indican que se ha
-recibido al menos un dato. No comprueban por sí solas que el dato sea reciente,
-que su timestamp sea correcto o que el target siga publicando. En una evolución
-futura habría que añadir comprobaciones de antigüedad, calidad y timeout.
+The `_target_valid` and `_target_velocity_valid` flags only say that at least
+one piece of data has arrived. On their own they don't check that the data is
+recent, that its timestamp is right or that the target is still publishing. A
+future version should add checks for age, quality and timeouts.
 
-## Consejos para modificar un modo
+## Tips for changing a mode
 
-1. Cambia una sola constante o fórmula cada vez.
-2. Explica en un comentario la unidad física: metros, segundos o radianes.
-3. Comprueba primero el vector `los` y después el setpoint.
-4. Verifica que la conversión de frames no haya cambiado.
-5. Prueba con distancias grandes, pequeñas, movimiento horizontal y vertical.
-6. No pruebes directamente en hardware sin validar el comportamiento en SITL.
+1. Change one constant or formula at a time.
+2. Write the physical unit in a comment: metres, seconds or radians.
+3. Check the `los` vector first, then the setpoint.
+4. Make sure the frame conversion hasn't changed.
+5. Test with large and small distances, and with horizontal and vertical motion.
+6. Don't test straight on hardware without validating the behaviour in SITL.
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Nodos de odometría y diagnóstico](Nodes-and-topics.md) · ➡️ Siguiente: [Lectura guiada del código](Code-walkthrough.md)
+🏠 [Home](Home.md) · ⬅️ Previous: [Nodes, topics and diagnostics](Nodes-and-topics.md) · ➡️ Next: [Code walkthrough](Code-walkthrough.md)

@@ -1,390 +1,381 @@
-# Análisis línea por línea: archivos de proyecto y construcción
+# Line by line: project and build files
 
-Esta es la primera de tres páginas que cubren **todos los archivos propios de
-`src/interceptor`**. Esta página se ocupa de los archivos de construcción,
-configuración y arranque del paquete. Las otras dos son:
+This is the first of three pages that cover **every file of our own in
+`src/interceptor`**. This page deals with the package's build, configuration
+and start-up files. The other two are:
 
-- [Nodos de odometría y tf2, línea por línea](Line-by-line-odometry-nodes.md):
-  los suscriptores de diagnóstico, los dos conversores tf2 y `tf2_listener`.
-- [Modos de guiado, línea por línea](Line-by-line-guidance-modes.md):
-  `pursuit_mode.cpp` y `PN_mode.cpp`.
+- [Odometry and tf2 nodes, line by line](Line-by-line-odometry-nodes.md): the
+  diagnostic subscribers, the two tf2 converters and `tf2_listener`.
+- [Guidance modes, line by line](Line-by-line-guidance-modes.md):
+  `pursuit_mode.cpp` and `PN_mode.cpp`.
 
-La mayoría de archivos de esta página se analizan línea por línea porque son
-código o configuración que ejecuta la máquina (`.gitignore`, `package.xml`,
-`CMakeLists.txt`, el launch). `LICENSE` y `README.md` son la excepción: son
-texto para personas, no instrucciones que ROS 2 o CMake interpreten letra a
-letra, así que sus secciones se limitan a explicar qué son y para qué sirven.
+Most files on this page are analysed line by line because they are code or
+configuration that the machine runs (`.gitignore`, `package.xml`,
+`CMakeLists.txt`, the launch file). `LICENSE` and `README.md` are the
+exception: they're text for people, not instructions that ROS 2 or CMake
+interpret, so their sections only explain what they are and what they're for.
 
-No se analizan línea por línea las librerías de terceros:
-esas carpetas se documentan en el [mapa del workspace](Workspace-file-map.md),
-pero su código pertenece a sus proyectos upstream. Los workflows de
-`.github` (CI, resúmenes de issues, releases) se documentan línea por línea
-dentro del [mapa del workspace](Workspace-file-map.md), junto al resto de
-automatización del repositorio.
+Third-party libraries are not analysed line by line: those folders are covered
+in the [workspace map](Workspace-file-map.md), but their code belongs to their
+upstream projects. The `.github` workflows (CI, issue summaries, releases) are
+also explained in the [workspace map](Workspace-file-map.md), together with
+the rest of the repository automation.
 
-## Cómo leer una explicación técnica
+## How to read a technical explanation
 
-Una línea de código puede parecer una frase extraña porque combina palabras,
-signos y tipos. Léela en este orden:
+A line of code can look like a strange sentence because it mixes words,
+symbols and types. Read it in this order:
 
-1. Busca la acción principal, normalmente el nombre que aparece antes de `(`.
-2. Mira los valores entre paréntesis: son los datos que recibe esa acción.
-3. Comprueba el tipo situado antes del nombre: indica qué clase de dato se
-   guarda o devuelve.
-4. Busca `=` para distinguir “crear o calcular algo” de “usar algo existente”.
-5. Si aparece `->` o `.`, significa “acceder a algo que pertenece a un objeto”.
+1. Find the main action, usually the name before `(`.
+2. Look at the values in brackets: they're the data that action receives.
+3. Check the type before the name: it says what kind of data is stored or
+   returned.
+4. Look for `=` to tell "create or compute something" from "use something that
+   already exists".
+5. `->` or `.` mean "access something that belongs to an object".
 
-Por ejemplo, `msg->velocity[0]` se puede leer como: “del mensaje llamado `msg`,
-entra en el campo `velocity` y toma su primera posición”. Los índices empiezan
-en cero en C++, de modo que `[0]`, `[1]` y `[2]` son los tres componentes.
+For example, `msg->velocity[0]` reads as: "from the message called `msg`, go
+into the `velocity` field and take its first position". Indices start at zero
+in C++, so `[0]`, `[1]` and `[2]` are the three components.
 
-No es necesario dominar todos los signos de una vez. La explicación debajo de
-cada bloque indica qué dato entra, qué transformación se realiza y qué resultado
-sale.
+You don't need to master every symbol at once. The explanation under each
+block says what data goes in, what transformation happens and what comes out.
 
-## Sintaxis de C++ que vas a encontrar constantemente
+## C++ syntax you'll see all the time
 
-[Code-walkthrough.md](Code-walkthrough.md) ya explica lo más básico (`{`, `;`,
-`//`, clases, funciones, variables, lambdas, `shared_ptr`/`unique_ptr`). Las
-tablas de esta página usan además una serie de construcciones de C++ más
-específicas que no se explican en ningún otro sitio de la wiki. Si te
-encuentras con alguna de ellas y no sabes qué significa, vuelve a esta tabla:
+The [Code walkthrough](Code-walkthrough.md) already explains the basics (`{`,
+`;`, `//`, classes, functions, variables, lambdas,
+`shared_ptr`/`unique_ptr`). The tables on these pages also use more specific
+C++ constructs that aren't explained anywhere else in the wiki. If you find one
+and don't know what it means, come back to this table:
 
-| Sintaxis | Qué significa | Ejemplo en este paquete |
+| Syntax | What it means | Example in this package |
 | --- | --- | --- |
-| `override` | Escrito después de un método, indica "esto sustituye a un método que ya existía en la clase de la que heredo". El compilador avisa si el nombre o los parámetros no coinciden exactamente con el original. | `void updateSetpoint(float dt_s) override` sustituye al `updateSetpoint` vacío que declara `px4_ros2::ModeBase`. |
-| `explicit` | Delante de un constructor, impide que C++ lo use "a escondidas" para convertir un valor en un objeto de esa clase sin que el programador lo pida explícitamente. Es una medida de seguridad, no cambia lo que hace el constructor. | `explicit PursuitMode(rclcpp::Node & node)`. |
-| `static constexpr` | Un valor constante que se calcula en tiempo de compilación (antes de ejecutar el programa) y que comparten todas las instancias de la clase; nunca cambia mientras el programa corre. | `static constexpr float kMaxHorizontalSpeed = 5.0f;`. |
-| `static` fuera de una clase | Una variable o función `static` a nivel de archivo solo es visible dentro de ese `.cpp`; ningún otro archivo puede usarla aunque tenga el mismo nombre. | `static const std::string kName = "Pursuit Intercept";`. |
-| `Plantilla<Tipo>` (por ejemplo `shared_ptr<Buffer>`) | Los `< >` después del nombre de una clase indican una plantilla: un molde genérico que se rellena con un tipo concreto. `shared_ptr<Buffer>` es "un puntero compartido, pero específicamente a un objeto `Buffer`", no a cualquier cosa. | `std::unique_ptr<tf2_ros::Buffer> _tf_buffer;`. |
-| `Tipo & nombre` (referencia) | Recibe el objeto original, no una copia. Si la función modifica ese parámetro, el cambio se ve fuera de la función también. | `explicit PursuitMode(rclcpp::Node & node)`: el modo recibe el nodo real, no una copia. |
-| `const Tipo & nombre` | Como el anterior, pero además promete que la función no va a modificar ese objeto: solo lo lee. | `catch (const tf2::TransformException & ex)`. |
-| `const` delante de una variable | El valor no se puede cambiar después de crearse. | `const Eigen::Vector3f los = _target_position_ned - _own_position->positionNed();`. |
-| `Espacio::Nombre` (`::`) | Se lee "dentro de". `std::string` es `string` dentro del espacio de nombres `std`; `px4_ros2::Result::Success` es el valor `Success`, dentro de `Result`, dentro de `px4_ros2`. | `px4_ros2::Result::Success`, `std::chrono::milliseconds(100)`. |
-| `.cross(v)` | Producto vectorial entre dos vectores 3D: da como resultado otro vector, perpendicular a los dos originales, relacionado con cuánto y hacia dónde "giran" uno respecto al otro. | `los.cross(v_rel)` en `PN_mode.cpp`. |
-| `.norm()` | La longitud (magnitud) de un vector. | `los.norm() < 1.0f`. |
-| `.squaredNorm()` | La longitud al cuadrado. Se usa en vez de `.norm()` cuando no hace falta la raíz cuadrada exacta, porque calcularla es más rápido. | `los.squaredNorm() + 1e-6f`. |
-| `.normalized()` | Devuelve el mismo vector pero con longitud 1, conservando la dirección. Sirve para quedarte solo con "hacia dónde apunta" un vector, sin su tamaño. | `los_horizontal.normalized() * kMaxHorizontalSpeed`. |
-| `.cast<float>()` | Convierte los números de un vector/cuaternión de un tipo a otro (aquí, de `double` a `float`). La `f` final de `Eigen::Vector3f` significa que sus tres componentes son `float`; la `d` de `Eigen::Vector3d`, que son `double`. Las funciones de conversión de frames suelen trabajar en `double`, mientras que el estado interno de los modos se guarda en `float` — de ahí que este `.cast<float>()` aparezca tan a menudo. | `position_ned.cast<float>()`. |
-| `std::bind(&Clase::metodo, this)` | Empaqueta un método de un objeto concreto para poder pasarlo como si fuera una función suelta (por ejemplo, a un timer). | `std::bind(&FrameListener::on_timer, this)` en `tf2_listener.cpp`. |
-| `std::clamp(valor, min, max)` | Si `valor` es menor que `min`, devuelve `min`; si es mayor que `max`, devuelve `max`; si no, devuelve `valor` tal cual. Limita un número a un rango. | `std::clamp(los.z(), -kMaxVerticalSpeed, kMaxVerticalSpeed)`. |
-| `std::min(a, b)` | Devuelve el menor de los dos valores. | `std::min(a_cmd_norm, kMaxAcceleration)`. |
-| `(void)nombre;` | Le dice al compilador "sé que no uso esta variable, es intencionado", para que no avise de "parámetro sin usar". | `(void)dt_s;` en `updateSetpoint`. |
+| `override` | Written after a method, it means "this replaces a method that already existed in the class I inherit from". The compiler warns if the name or the parameters don't match the original exactly. | `void updateSetpoint(float dt_s) override` replaces the empty `updateSetpoint` declared by `px4_ros2::ModeBase`. |
+| `explicit` | In front of a constructor, it stops C++ from using it "behind your back" to turn a value into an object of that class without the programmer asking for it. It's a safety measure; it doesn't change what the constructor does. | `explicit PursuitMode(rclcpp::Node & node)`. |
+| `static constexpr` | A constant value computed at compile time (before the program runs) and shared by every instance of the class; it never changes while the program runs. | `static constexpr float kMaxHorizontalSpeed = 5.0f;`. |
+| `static` outside a class | A file-level `static` variable or function is only visible inside that `.cpp`; no other file can use it, even with the same name. | `static const std::string kName = "Pursuit Intercept";`. |
+| `Template<Type>` (for example `shared_ptr<Buffer>`) | The `< >` after a class name mean a template: a generic mould filled in with a specific type. `shared_ptr<Buffer>` is "a shared pointer, specifically to a `Buffer` object", not to anything. | `std::unique_ptr<tf2_ros::Buffer> _tf_buffer;`. |
+| `Type & name` (reference) | Receives the original object, not a copy. If the function changes that parameter, the change is visible outside the function too. | `explicit PursuitMode(rclcpp::Node & node)`: the mode gets the real node, not a copy. |
+| `const Type & name` | Like the previous one, but it also promises the function won't change that object: it only reads it. | `catch (const tf2::TransformException & ex)`. |
+| `const` in front of a variable | The value can't be changed after it's created. | `const Eigen::Vector3f los = _target_position_ned - _own_position->positionNed();`. |
+| `Space::Name` (`::`) | Read it as "inside". `std::string` is `string` inside the `std` namespace; `px4_ros2::Result::Success` is the value `Success`, inside `Result`, inside `px4_ros2`. | `px4_ros2::Result::Success`, `std::chrono::milliseconds(100)`. |
+| `.cross(v)` | Cross product of two 3D vectors: the result is another vector, perpendicular to both, related to how much and in which direction one "turns" relative to the other. | `los.cross(v_rel)` in `PN_mode.cpp`. |
+| `.norm()` | The length (magnitude) of a vector. | `los.norm() < 1.0f`. |
+| `.squaredNorm()` | The squared length. Used instead of `.norm()` when the exact square root isn't needed, because it's faster to compute. | `los.squaredNorm() + 1e-6f`. |
+| `.normalized()` | Returns the same vector with length 1, keeping its direction. It keeps only "where it points", without the size. | `los_horizontal.normalized() * kMaxHorizontalSpeed`. |
+| `.cast<float>()` | Converts the numbers of a vector/quaternion from one type to another (here, from `double` to `float`). The `f` at the end of `Eigen::Vector3f` means its three components are `float`; the `d` in `Eigen::Vector3d`, that they're `double`. Frame conversion functions usually work in `double`, while the modes keep their internal state in `float`, which is why this `.cast<float>()` shows up so often. | `position_ned.cast<float>()`. |
+| `std::bind(&Class::method, this)` | Packs a method of a specific object so it can be passed around as if it were a free function (for example, to a timer). | `std::bind(&FrameListener::on_timer, this)` in `tf2_listener.cpp`. |
+| `std::clamp(value, min, max)` | If `value` is below `min`, returns `min`; if it's above `max`, returns `max`; otherwise returns `value` as it is. It limits a number to a range. | `std::clamp(los.z(), -kMaxVerticalSpeed, kMaxVerticalSpeed)`. |
+| `std::min(a, b)` | Returns the smaller of the two values. | `std::min(a_cmd_norm, kMaxAcceleration)`. |
+| `(void)name;` | Tells the compiler "I know I don't use this variable, it's on purpose", so it doesn't warn about an unused parameter. | `(void)dt_s;` in `updateSetpoint`. |
 
-## Cómo usar este análisis
+## How to use this analysis
 
-- Los números de línea corresponden al estado actual de cada archivo.
-- Las líneas en blanco separan bloques y no ejecutan ninguna operación.
-- Cuando varias líneas forman una única instrucción CMake, XML, Python o C++ se
-  explican juntas, indicando qué hace cada una.
-- Los comentarios no cambian el programa; explican intención para quien lee.
-- Para comprobar el texto exacto, abre el enlace al archivo fuente de cada
-  sección.
+- Line numbers match the current state of each file.
+- Blank lines separate blocks and don't do anything.
+- When several lines make up a single CMake, XML, Python or C++ instruction,
+  they're explained together, saying what each one does.
+- Comments don't change the program; they explain intent to the reader.
+- To check the exact text, open the link to the source file in each section.
 
-## Orden recomendado para leer estas tres páginas
+## Suggested order for these three pages
 
-Las secciones de esta página y de las otras dos ya están ordenadas siguiendo
-esta progresión; no hace falta saltar de un lado a otro, basta con leer las
-tres páginas de arriba hacia abajo, en este orden:
+The sections of this page and the other two already follow this order; there's
+no need to jump around, just read the three pages top to bottom, in this order:
 
-1. **En esta página**: `.gitignore`, `LICENSE` y `README.md`, para conocer la
-   estructura del paquete; después `package.xml` y `CMakeLists.txt`, para
-   relacionar cada ejecutable con su `.cpp`; y por último
-   `interceptor.launch.py`, para ver qué arranca y en qué orden.
-2. **En [nodos de odometría y tf2](Line-by-line-odometry-nodes.md)**: primero
-   el suscriptor de diagnóstico (son las callbacks más simples del
-   paquete), después los conversores tf2 y `tf2_listener`.
-3. **En [modos de guiado](Line-by-line-guidance-modes.md)**: `pursuit_mode.cpp`
-   antes que `PN_mode.cpp` (Pursuit es la base sobre la que PN añade cosas).
+1. **On this page**: `.gitignore`, `LICENSE` and `README.md`, to get to know the
+   package layout; then `package.xml` and `CMakeLists.txt`, to link each
+   executable to its `.cpp`; and finally `interceptor.launch.py`, to see what
+   starts and in which order.
+2. **In [odometry and tf2 nodes](Line-by-line-odometry-nodes.md)**: first the
+   diagnostic subscriber (the simplest callbacks in the package), then the tf2
+   converters and `tf2_listener`.
+3. **In [guidance modes](Line-by-line-guidance-modes.md)**: `pursuit_mode.cpp`
+   before `PN_mode.cpp` (Pursuit is the base PN builds on).
 
-Después de terminar las tres páginas, usa el
-[mapa completo del workspace](Workspace-file-map.md) para distinguir código
-propio de dependencias vendorizadas y para ver los workflows de `.github`.
+After the three pages, use the [workspace map](Workspace-file-map.md) to tell
+our code apart from the vendored dependencies and to see the `.github`
+workflows.
 
 ## 1. `src/interceptor/.gitignore`
 
-Archivo: [`src/interceptor/.gitignore`](../../src/interceptor/.gitignore)
+File: [`src/interceptor/.gitignore`](../../src/interceptor/.gitignore)
 
-Cada patrón indica a Git qué archivos locales no debe incluir:
+Each pattern tells Git which local files it must not include:
 
-| Línea | Explicación |
+| Line | Explanation |
 | --- | --- |
-| `build/` | Ignora artefactos de compilación de CMake/colcon. |
-| `install/` | Ignora la instalación generada por colcon. |
-| `log/` | Ignora logs generados por ROS 2. |
-| `*.o` | Ignora objetos compilados de C/C++. |
-| `*.so` | Ignora bibliotecas compartidas compiladas. |
-| `__pycache__/` | Ignora bytecode generado por Python. |
+| `build/` | Ignores CMake/colcon build artefacts. |
+| `install/` | Ignores the install generated by colcon. |
+| `log/` | Ignores logs generated by ROS 2. |
+| `*.o` | Ignores compiled C/C++ objects. |
+| `*.so` | Ignores compiled shared libraries. |
+| `__pycache__/` | Ignores bytecode generated by Python. |
 
-El archivo evita subir resultados reproducibles de una compilación. No evita
-subir archivos fuente ni cambia el comportamiento del paquete.
+The file keeps reproducible build results out of the repository. It doesn't
+stop source files from being committed and doesn't change how the package
+behaves.
 
 ## 2. `src/interceptor/LICENSE`
 
-Archivo: [`src/interceptor/LICENSE`](../../src/interceptor/LICENSE)
+File: [`src/interceptor/LICENSE`](../../src/interceptor/LICENSE)
 
-Es el texto legal del paquete, no código ejecutable: declara que la licencia
-es propietaria (no open source), reserva los derechos a los autores
-indicados y prohíbe copiar, distribuir, modificar o usar el software sin
-permiso escrito previo. Envuelve ese texto en una etiqueta
-`<license>...</license>`, una particularidad de este archivo y no un formato
-estándar de licencias. `package.xml` declara la misma licencia propietaria,
-de forma independiente, en su propia etiqueta `<license>` (sección 4, más
-abajo).
+The package's legal text, not executable code: the full text of the
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), the same
+licence as the rest of the repository (root `LICENSE`). `package.xml` declares
+the same licence, separately, in its own `<license>` tag (section 4, below).
 
 ## 3. `src/interceptor/README.md`
 
-Archivo: [`src/interceptor/README.md`](../../src/interceptor/README.md)
+File: [`src/interceptor/README.md`](../../src/interceptor/README.md)
 
-Es la puerta de entrada al paquete para quien lo clona por primera vez.
-Resume qué es (un paquete ROS 2 `ament_cmake` para seguir e interceptar un
-target usando datos de odometría PX4), qué sistema operativo y versiones
-requiere (Ubuntu 24.04, ROS 2 Jazzy y, para simular, las versiones fijadas de
-PX4, del Agent y de QGroundControl), y qué tres paquetes externos usa
-(`px4_msgs`, `px4_ros_com`, `px4-ros2-interface-lib`, con enlaces a sus
-repositorios oficiales), aclarando que ya vienen vendorizados dentro de `src/`
-y no hay que clonarlos aparte. A partir de ahí da los comandos para clonar el
-workspace, instalar dependencias, compilar y ejecutar el paquete; esos mismos
-comandos ya se explican con detalle, orden y contexto en
-[Instalación y compilación](Installation-and-build.md) y en
-[Ejecución de la simulación](Simulation.md), así que aquí no se repiten uno
-por uno. Termina enlazando la documentación oficial de ROS 2 y PX4 para quien
-quiera profundizar sin confundirla con este código.
+The entry point to the package for someone cloning it for the first time. It
+sums up what it is (a ROS 2 `ament_cmake` package to track and intercept a
+target using PX4 odometry data), which operating system and versions it needs
+(Ubuntu 24.04, ROS 2 Jazzy and, to simulate, the pinned versions of PX4, the
+Agent and QGroundControl), and which three external packages it uses
+(`px4_msgs`, `px4_ros_com`, `px4-ros2-interface-lib`, with links to their
+official repositories), making clear they're already vendored inside `src/`
+and don't need to be cloned separately. From there it gives the commands to
+clone the workspace, install dependencies, build and run the package; those
+same commands are explained in detail, in order and with context, in
+[Installation and build](Installation-and-build.md) and
+[Running the simulation](Simulation.md), so they aren't repeated one by one
+here. It ends with links to the official ROS 2 and PX4 documentation for
+anyone who wants to dig deeper without mixing it up with this code.
 
 ## 4. `src/interceptor/package.xml`
 
-Archivo: [`src/interceptor/package.xml`](../../src/interceptor/package.xml)
+File: [`src/interceptor/package.xml`](../../src/interceptor/package.xml)
 
-| Línea | Explicación |
+| Line | Explanation |
 | --- | --- |
-| `<?xml version="1.0"?>` | Declara que el documento usa XML 1.0. |
-| `<?xml-model ... package_format3.xsd ...?>` | Permite validar el documento contra el esquema de paquetes ROS 2. |
-| `<package format="3">` | Abre un paquete con el formato 3. |
-| `<name>interceptor</name>` | Nombre que usan `ros2 run`, `ros2 launch` y colcon. |
-| `<version>0.1.1</version>` | Versión declarada del paquete. |
-| `<description>...</description>` | Descripción breve para herramientas ROS 2. |
-| `<maintainer email=...>deireb</maintainer>` | Persona responsable y correo de mantenimiento. |
-| `<license>...</license>` | Nombre de la licencia declarada. |
-| `<buildtool_depend>ament_cmake</buildtool_depend>` | Indica que CMake/ament construye el paquete. |
+| `<?xml version="1.0"?>` | Declares that the document uses XML 1.0. |
+| `<?xml-model ... package_format3.xsd ...?>` | Lets the document be validated against the ROS 2 package schema. |
+| `<package format="3">` | Opens a format 3 package. |
+| `<name>interceptor</name>` | Name used by `ros2 run`, `ros2 launch` and colcon. |
+| `<version>0.1.1</version>` | Declared package version. |
+| `<description>...</description>` | Short description for ROS 2 tools. |
+| `<maintainer email=...>Deireb</maintainer>` | Maintainer, with their GitHub no-reply address. |
+| `<license>Apache-2.0</license>` | Name of the declared licence. |
+| `<url type="website">...</url>` | Maintainer's web page. |
+| `<buildtool_depend>ament_cmake</buildtool_depend>` | Says that CMake/ament builds the package. |
 
-Las etiquetas `<depend>` de `rclcpp`, `tf2_ros`, `tf2`, `geometry_msgs`,
-`px4_msgs`, `px4_ros_com` y `px4_ros2_cpp` declaran dependencias que el código
-sí usa al compilar y ejecutar. Cada nombre debe corresponder a un paquete
-ROS 2 que `find_package` pueda localizar. `sensor_msgs` es distinta: está
-declarada aquí y en `CMakeLists.txt`, pero ningún archivo `.cpp` del paquete
-la incluye ni usa ninguno de sus tipos — es una dependencia declarada sin uso
-en el código fuente actual.
+The `<depend>` tags for `rclcpp`, `tf2_ros`, `tf2`, `geometry_msgs`,
+`px4_msgs`, `px4_ros_com` and `px4_ros2_cpp` declare dependencies that the code
+really uses to build and run. Each name must match a ROS 2 package that
+`find_package` can find. `sensor_msgs` is different: it's declared here and in
+`CMakeLists.txt`, but no `.cpp` in the package includes it or uses any of its
+types; it's a declared dependency that the current source doesn't use.
 
-`<exec_depend>launch</exec_depend>` y `<exec_depend>launch_ros</exec_depend>`
-son necesarias al ejecutar el archivo Python de launch. Las dos
-`<test_depend>` se usan solo para lint/tests. `<export>` y
-`<build_type>ament_cmake</build_type>` indican a ROS 2 cómo construir el
-paquete. `</package>` cierra el documento.
+`<exec_depend>launch</exec_depend>` and `<exec_depend>launch_ros</exec_depend>`
+are needed to run the Python launch file. The two `<test_depend>` tags are
+only used for lint/tests. `<export>` and `<build_type>ament_cmake</build_type>`
+tell ROS 2 how to build the package. `</package>` closes the document.
 
 ## 5. `src/interceptor/CMakeLists.txt`
 
-Archivo: [`src/interceptor/CMakeLists.txt`](../../src/interceptor/CMakeLists.txt)
+File: [`src/interceptor/CMakeLists.txt`](../../src/interceptor/CMakeLists.txt)
 
-### Proyecto y compilador, líneas 1-6
+### Project and compiler, lines 1-6
 
-| Código | Explicación |
+| Code | Explanation |
 | --- | --- |
-| `cmake_minimum_required(VERSION 3.8)` | Rechaza versiones de CMake demasiado antiguas. |
-| `project(interceptor)` | Define el nombre del proyecto CMake. |
-| `if(CMAKE_COMPILER_IS_GNUCXX OR ... Clang)` | Entra si el compilador es GCC o Clang. |
-| `add_compile_options(-Wall -Wextra -Wpedantic)` | Activa advertencias sobre errores y construcciones no portables. |
-| `endif()` | Cierra la condición. |
+| `cmake_minimum_required(VERSION 3.8)` | Rejects CMake versions that are too old. |
+| `project(interceptor)` | Sets the CMake project name. |
+| `if(CMAKE_COMPILER_IS_GNUCXX OR ... Clang)` | Enters if the compiler is GCC or Clang. |
+| `add_compile_options(-Wall -Wextra -Wpedantic)` | Turns on warnings about errors and non-portable constructs. |
+| `endif()` | Closes the condition. |
 
-### Dependencias, líneas 8-17
+### Dependencies, lines 8-17
 
-Cada `find_package(NOMBRE REQUIRED)` busca un paquete y hace fallar la
-configuración si no existe:
+Each `find_package(NAME REQUIRED)` looks for a package and makes the
+configuration fail if it doesn't exist:
 
-- `ament_cmake`: integración CMake/ROS 2.
-- `rclcpp`: API C++ de ROS 2.
-- `tf2_ros` y `tf2`: transformaciones y excepciones.
-- `geometry_msgs`: transformaciones, twists y mensajes geométricos.
+- `ament_cmake`: CMake/ROS 2 integration.
+- `rclcpp`: the ROS 2 C++ API.
+- `tf2_ros` and `tf2`: transforms and exceptions.
+- `geometry_msgs`: transforms, twists and geometric messages.
 - `px4_msgs`: `VehicleOdometry`.
-- `px4_ros_com`: conversiones de marcos.
-- `px4_ros2_cpp`: modos y setpoints PX4.
-- `sensor_msgs`: dependencia declarada pero sin uso en el código actual (ver
-  la nota en la sección de `package.xml`, más arriba).
+- `px4_ros_com`: frame conversions.
+- `px4_ros2_cpp`: PX4 modes and setpoints.
+- `sensor_msgs`: declared but unused in the current code (see the note in the
+  `package.xml` section, above).
 
-### Construcción de cada ejecutable
+### Building each executable
 
-Cada pareja `add_executable` + `ament_target_dependencies` hace dos cosas:
+Each `add_executable` + `ament_target_dependencies` pair does two things:
 
-1. Asocia un nombre de comando a un `.cpp`.
-2. Asocia las bibliotecas que ese binario necesita.
+1. Links a command name to a `.cpp`.
+2. Links the libraries that binary needs.
 
-| Ejecutable | Fuente | Dependencias particulares |
+| Executable | Source | Specific dependencies |
 | --- | --- | --- |
-| `vehicle_odometry_subscriber` | `src/vehicle_odometry_subscriber.cpp` | ROS 2, tf2, geometría, mensajes PX4 y sensores. El launch lo arranca dos veces (una por vehículo) con `name=`/`parameters=` distintos. |
-| `interceptor_tf2_odometry` | `src/interceptor_tf2_odometry.cpp` | Añade `px4_ros_com` para convertir frames. |
-| `target_tf2_odometry` | `src/target_tf2_odometry.cpp` | Añade `px4_ros_com` para convertir frames y `px4_ros2_cpp` para calcular el desplazamiento de origen (`vectorToGlobalPosition`); además publica velocidad. |
-| `tf2_listener` | `src/tf2_listener.cpp` | Buffer/listener tf2 y odometría PX4. |
-| `pursuit_mode` | `src/pursuit_mode.cpp` | `px4_ros2_cpp` y transformaciones. |
-| `PN_mode` | `src/PN_mode.cpp` | Idénticas a las de `pursuit_mode`. |
+| `vehicle_odometry_subscriber` | `src/vehicle_odometry_subscriber.cpp` | ROS 2, tf2, geometry, PX4 messages and sensors. The launch starts it twice (once per vehicle) with different `name=`/`parameters=`. |
+| `interceptor_tf2_odometry` | `src/interceptor_tf2_odometry.cpp` | Adds `px4_ros_com` to convert frames. |
+| `target_tf2_odometry` | `src/target_tf2_odometry.cpp` | Adds `px4_ros_com` to convert frames and `px4_ros2_cpp` to compute the origin offset (`vectorToGlobalPosition`); it also publishes velocity. |
+| `tf2_listener` | `src/tf2_listener.cpp` | tf2 buffer/listener and PX4 odometry. |
+| `pursuit_mode` | `src/pursuit_mode.cpp` | `px4_ros2_cpp` and transforms. |
+| `PN_mode` | `src/PN_mode.cpp` | Same as `pursuit_mode`. |
 
-Las líneas con los nombres repetidos dentro de `ament_target_dependencies` no
-son código duplicado accidental: indican al linker qué bibliotecas usa cada
-target.
+The names repeated inside `ament_target_dependencies` aren't accidental
+duplication: they tell the linker which libraries each target uses.
 
-### Tests e instalación
+### Tests and install
 
-Dentro de `if(BUILD_TESTING)`:
+Inside `if(BUILD_TESTING)`:
 
-- `find_package(ament_lint_auto REQUIRED)` localiza el sistema de lint.
-- Las dos asignaciones `ament_cmake_*_FOUND = TRUE` desactivan copyright y
-  cpplint, siguiendo los comentarios del propio archivo.
-- `ament_lint_auto_find_test_dependencies()` registra los tests automáticos.
+- `find_package(ament_lint_auto REQUIRED)` finds the lint system.
+- The two `ament_cmake_*_FOUND = TRUE` assignments turn off the copyright and
+  cpplint checks, as the file's own comments say.
+- `ament_lint_auto_find_test_dependencies()` registers the automatic tests.
 
-`install(TARGETS ... DESTINATION lib/${PROJECT_NAME})` instala los seis
-binarios en la carpeta estándar del paquete. `install(DIRECTORY launch
-DESTINATION share/${PROJECT_NAME})` instala el launch. Finalmente,
-`ament_package()` genera metadatos para que ROS 2 encuentre el paquete.
+`install(TARGETS ... DESTINATION lib/${PROJECT_NAME})` installs the six
+binaries in the package's standard folder. `install(DIRECTORY launch
+DESTINATION share/${PROJECT_NAME})` installs the launch file. Finally,
+`ament_package()` generates the metadata ROS 2 needs to find the package.
 
 ## 6. `src/interceptor/launch/interceptor.launch.py`
 
-Archivo: [`interceptor.launch.py`](../../src/interceptor/launch/interceptor.launch.py)
+File: [`interceptor.launch.py`](../../src/interceptor/launch/interceptor.launch.py)
 
-Esta tabla cubre **todas** las líneas del archivo, en orden. Las líneas en
-blanco no aparecen porque no ejecutan nada; verifica en el archivo que el
-número de línea coincide.
+This table covers **every** line of the file, in order. Blank lines are left
+out because they do nothing; check in the file that the line numbers match.
 
-| Línea | Código | Explicación |
+| Line | Code | Explanation |
 | ---: | --- | --- |
-| 1 | `#!/usr/bin/env python` | *Shebang*: permite ejecutar el archivo directamente como script Python en sistemas Unix. |
-| 3 | `"""` | Abre un docstring: un comentario de varias líneas que documenta el archivo. |
-| 4 | `Launch file para el escenario interceptor/target.` | Texto descriptivo, no se ejecuta. |
-| 6 | `Arranca el agente Micro XRCE-DDS, los 4 nodos de odometria/diagnostico` | Resume qué arranca este launch: el agente DDS y los 4 nodos de odometría/diagnóstico. |
-| 7 | `(dos instancias de vehicle_odometry_subscriber, una por vehiculo, mas` | Nombra esos nodos: dos instancias del suscriptor de diagnóstico, una por vehículo. |
-| 8 | `target_tf2_odometry e interceptor_tf2_odometry) y un solo modo de` | Cierra la lista con los dos conversores tf2 y añade que solo se lanza un modo de guiado. |
-| 9 | `guiado, elegido con el argumento mode:=pn\|pursuit (por defecto, pn).` | Indica que el modo se elige con el argumento `mode`, que acepta `pn` o `pursuit`, y que si no se indica vale `pn`. |
-| 10 | `El nombre antiguo, modo:=, se acepta temporalmente como alias de mode.` | Avisa de que el nombre antiguo del argumento, `modo`, sigue funcionando de momento como alias de `mode`. |
-| 12 | `Ejemplo de uso:` | Introduce el ejemplo de invocación. |
-| 13 | `    ros2 launch interceptor interceptor.launch.py            # equivale a mode:=pn` | Invocación más corta: sin argumento se usa el valor por defecto, `pn`. |
-| 14 | `    ros2 launch interceptor interceptor.launch.py mode:=pursuit` | Invocación equivalente eligiendo el otro modo de guiado. |
-| 16 | `PX4 se lanza a mano, cada instancia en su propia terminal (desde ~/PX4-Autopilot):` | Aclara que PX4 no se arranca desde este archivo, y desde qué carpeta se ejecutan los comandos siguientes. |
-| 17 | `    interceptor (instancia 0): make px4_sitl gz_x500` | Comando de ejemplo para arrancar la instancia 0 (interceptor). |
-| 18 | `    target (instancia 1):` | Introduce el comando de la instancia 1 (target). |
-| 19 | `        GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 \` | Comando de ejemplo para arrancar la instancia 1 (target), 20 m al norte del interceptor (`PX4_GZ_MODEL_POSE="0,20"`); la barra invertida continúa en la línea siguiente. |
-| 20 | `            ./build/px4_sitl_default/bin/px4 -i 1` | Resto del comando de la instancia 1. |
-| 22 | `Al pulsar Ctrl-C, el launch tarda unos 5 s en cerrarse: a proposito, para dar tiempo al` | Avisa de que el cierre con Ctrl-C tarda unos 5 s, y que es intencional. |
-| 23 | `modo de guiado a darse de baja en PX4 antes de que el agente muera.` | Explica el motivo: dar tiempo al modo de guiado a darse de baja en PX4. |
-| 24 | `"""` | Cierra el docstring. |
-| 26 | `import os` | Importa utilidades del sistema operativo, aquí solo se usa para expandir `~`. |
-| 28 | `from launch import LaunchDescription` | Importa la clase que representa "la lista de acciones a ejecutar". |
-| 29 | `from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, SetLaunchConfiguration` | Importa la acción que declara un argumento de launch (`mode`, `modo`), la que lanza un comando de shell arbitrario (el agente DDS), la que escribe un mensaje en el log (`LogInfo`) y la que cambia el valor de un argumento ya declarado (`SetLaunchConfiguration`). |
-| 30 | `from launch.conditions import IfCondition, UnlessCondition` | Importa las condiciones que deciden si una acción se ejecuta o no: `IfCondition` la ejecuta si la expresión es verdadera y `UnlessCondition` si es falsa. |
-| 31 | `from launch.substitutions import EqualsSubstitution, LaunchConfiguration` | Importa la sustitución que compara dos valores en tiempo de lanzamiento (`EqualsSubstitution`) y la que lee el valor de un argumento declarado (`LaunchConfiguration`). |
-| 32 | `from launch_ros.actions import Node` | Importa la acción que lanza un nodo ROS 2 de un paquete. |
-| 34 | `MICRO_XRCE_DDS_AGENT_DIR = os.path.expanduser('~/Micro-XRCE-DDS-Agent')` | Expande `~` a la ruta absoluta del usuario actual y la guarda en una constante. |
-| 37 | `def generate_launch_description():` | Define la función sin argumentos que ROS 2 busca y ejecuta al hacer `ros2 launch`. |
-| 39 | `mode_arg = DeclareLaunchArgument(` | Empieza a declarar el argumento de launch `mode`. |
-| 40 | `'mode',` | Nombre del argumento: se pasa como `mode:=<valor>` en la línea de comandos. |
-| 41 | `default_value='pn',` | Valor que toma el argumento si no se indica en la línea de comandos: se registra `PN_mode`. |
-| 42 | `choices=['pn', 'pursuit'],` | Restringe los valores válidos a `pn` y `pursuit`; combinado con `default_value`, un valor fuera de esa lista da error. |
-| 43 | `description=(` | Empieza la descripción del argumento (se ve con `ros2 launch interceptor interceptor.launch.py --show-args`). |
-| 44 | `'Modo de guiado que se registra en PX4 (pn = PN mode, pursuit = Pursuit '` | Primera parte del texto de la descripción. |
-| 45 | `'Intercept); solo se lanza uno. Por defecto, pn.'` | Segunda parte: aclara que solo se lanza un modo y cuál es el de por defecto. |
-| 46 | `),` | Cierra la tupla de strings concatenados de `description`. |
-| 47 | `)` | Cierra la llamada a `DeclareLaunchArgument`. |
-| 49 | `# Alias temporal del nombre antiguo del argumento. Si se pasa modo:=, su valor` | Comentario: lo que sigue es un alias temporal del nombre antiguo, `modo`, y si se pasa, su valor sustituye al de `mode`. |
-| 50 | `# sustituye al de mode. Eliminar cuando ya no se use modo:= en ningun sitio.` | Continúa el comentario: el alias se quitará cuando nadie use ya `modo:=`. |
-| 51 | `modo_arg = DeclareLaunchArgument(` | Empieza a declarar el argumento `modo`, que solo existe por compatibilidad. |
-| 52 | `'modo',` | Nombre del argumento antiguo: `modo:=<valor>`. |
-| 53 | `default_value='',` | Por defecto vale la cadena vacía, que aquí significa "no se ha pasado". |
-| 54 | `choices=['', 'pn', 'pursuit'],` | Valores válidos: vacío, `pn` o `pursuit`; cualquier otro valor da error igual que con `mode`. |
-| 55 | `description='Obsoleto: alias temporal de mode. Usar mode:=pn\|pursuit.',` | Descripción que aparece con `--show-args`: avisa de que está obsoleto y de qué usar en su lugar. |
-| 56 | `)` | Cierra la llamada a `DeclareLaunchArgument`. |
-| 57 | `modo_given = UnlessCondition(EqualsSubstitution(LaunchConfiguration('modo'), ''))` | Guarda en una variable la condición "`modo` no está vacío", es decir, el usuario pasó `modo:=`; se reutiliza en las dos acciones siguientes. |
-| 58 | `modo_alias = SetLaunchConfiguration('mode', LaunchConfiguration('modo'), condition=modo_given)` | Si se pasó `modo:=`, copia su valor en `mode`. Como esta acción va en la lista antes que los nodos, las condiciones de los nodos ya ven el valor copiado. |
-| 59 | `modo_warning = LogInfo(` | Empieza a construir una acción que escribe un mensaje en el log del launch. |
-| 60 | `msg='El argumento modo:= esta obsoleto; usa mode:= en su lugar.',` | Texto del aviso: `modo:=` está obsoleto y hay que usar `mode:=`. |
-| 61 | `condition=modo_given,` | El aviso solo se muestra si se pasó `modo:=`. |
-| 62 | `)` | Cierra la llamada a `LogInfo`. |
-| 64 | `# El agente ignora SIGINT para seguir vivo tras el Ctrl-C hasta que el launch escala a` | Comentario: explica por qué el agente ignora SIGINT. |
-| 65 | ``# SIGTERM: asi el modo de guiado tiene tiempo de enviar `Unregistering` a PX4.`` | Continúa el comentario: da tiempo al modo de guiado a darse de baja en PX4. |
-| 66 | `micro_xrce_agent = ExecuteProcess(` | Empieza a construir la acción que arrancará el agente DDS. |
-| 67 | `cmd=[["trap '' INT; exec ./build/MicroXRCEAgent udp4 -p 8888"]],` | Comando a ejecutar: `trap '' INT` hace que el proceso ignore SIGINT (Ctrl-C no lo mata); `exec` sustituye la shell por el binario del agente, transporte UDP/IPv4, puerto 8888, para que la señal de cierre (SIGTERM) le llegue directamente a él. |
-| 68 | `shell=True,` | Ejecuta ese comando a través de una shell, como si se escribiera en una terminal. |
-| 69 | `cwd=MICRO_XRCE_DDS_AGENT_DIR,` | Carpeta de trabajo donde se lanza el comando (debe existir `build/MicroXRCEAgent` ahí dentro). |
-| 70 | `output='log',` | La salida del proceso va a los logs de ROS 2, no directamente a la terminal. |
-| 71 | `)` | Cierra la llamada a `ExecuteProcess`. |
-| 73 | `target_vehicle_odometry_subscriber_node = Node(` | Empieza a construir el bloque del primer nodo. |
-| 74 | `package='interceptor',` | Paquete ROS 2 donde buscar el ejecutable. |
-| 75 | `executable='vehicle_odometry_subscriber',` | Nombre del binario a ejecutar: el suscriptor de diagnóstico parametrizado (ver [Nodos y tópicos](Nodes-and-topics.md)). |
-| 76 | `name='target_vehicle_odometry_subscriber',` | Nombre visible del nodo en `ros2 node list`, distinto del ejecutable. |
-| 77 | `parameters=[{` | Empieza la lista de parámetros de esta instancia. |
-| 78 | `'vehicle_name': 'target',` | Fija `vehicle_name` a `target`. |
-| 79 | `'odometry_topic': '/px4_1/fmu/out/vehicle_odometry',` | Fija `odometry_topic` al tópico de la instancia 1 (target): con esto el nombre del nodo y el tópico que escucha coinciden. |
-| 80 | `}],` | Cierra la lista de parámetros. |
-| 81 | `output='log',` | Su salida va a los logs, no a pantalla. |
-| 82 | `)` | Cierra el bloque de este nodo. |
-| 84 | `target_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del target. |
-| 85 | `package='interceptor',` | Igual que la línea 74. |
-| 86 | `executable='target_tf2_odometry',` | Ejecutable que convierte la odometría del target y publica `target/base_link` y `target/velocity`. |
-| 87 | `output='screen',` | Aquí la salida sí va directamente a la terminal (`screen`), a diferencia de los diagnósticos. |
-| 88 | `)` | Cierra el bloque. |
-| 90 | `interceptor_vehicle_odometry_subscriber_node = Node(` | Empieza el bloque del segundo suscriptor de diagnóstico. |
-| 91 | `package='interceptor',` | Igual que arriba. |
-| 92 | `executable='vehicle_odometry_subscriber',` | Mismo ejecutable que la primera instancia, con otros parámetros. |
-| 93 | `name='interceptor_vehicle_odometry_subscriber',` | Nombre visible de esta instancia. |
-| 94 | `parameters=[{` | Empieza la lista de parámetros. |
-| 95 | `'vehicle_name': 'interceptor',` | Fija `vehicle_name` a `interceptor`. |
-| 96 | `'odometry_topic': '/fmu/out/vehicle_odometry',` | Fija `odometry_topic` al tópico de la instancia 0 (interceptor). |
-| 97 | `}],` | Cierra la lista de parámetros. |
-| 98 | `output='log',` | Salida a logs. |
-| 99 | `)` | Cierra el bloque. |
-| 101 | `interceptor_tf2_odometry_node = Node(` | Empieza el bloque del conversor tf2 del interceptor. |
-| 102 | `package='interceptor',` | Igual que arriba. |
-| 103 | `executable='interceptor_tf2_odometry',` | Publica `map -> interceptor/base_link`. |
-| 104 | `output='screen',` | Salida a pantalla. |
-| 105 | `)` | Cierra el bloque. |
-| 107 | `# tf2_listener_node = Node(` | Línea comentada: empieza con `#`, así que Python la ignora por completo. |
-| 108 | `#     package='interceptor',` | Comentada, ignorada. |
-| 109 | `#     executable='tf2_listener',` | Comentada, ignorada. |
-| 110 | `#     output='screen',` | Comentada, ignorada. |
-| 111 | `# )` | Comentada, ignorada. Todo este bloque de 5 líneas está desactivado: por eso `tf2_listener` no arranca con el launch por defecto. |
-| 113 | `pursuit_mode_node = Node(` | Empieza el bloque del modo de persecución pura. |
-| 114 | `package='interceptor',` | Igual que arriba. |
-| 115 | `executable='pursuit_mode',` | Ejecutable del modo `pursuit_mode`. |
-| 116 | `output='screen',` | Salida a pantalla. |
-| 117 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('mode'), 'pursuit')),` | Solo se lanza este nodo si `mode` vale `pursuit`: compara el valor del argumento con la cadena `'pursuit'`. |
-| 118 | `)` | Cierra el bloque. |
-| 120 | `PN_mode_node = Node(` | Empieza el bloque del modo de navegación proporcional. |
-| 121 | `package='interceptor',` | Igual que arriba. |
-| 122 | `executable='PN_mode',` | Ejecutable del modo `PN_mode`. |
-| 123 | `output='screen',` | Salida a pantalla. |
-| 124 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('mode'), 'pn')),` | Solo se lanza este nodo si `mode` vale `pn`. |
-| 125 | `)` | Cierra el bloque. |
-| 127 | `return LaunchDescription([` | Construye y devuelve la lista de acciones que ROS 2 ejecutará; el orden de esta lista es el orden de arranque. |
-| 128 | `mode_arg,` | Primero se declara el argumento `mode` (debe ir antes de usarse en las condiciones de los nodos). |
-| 129 | `modo_arg,` | Después el alias `modo`. |
-| 130 | `modo_alias,` | Si se pasó `modo:=`, su valor se copia en `mode` aquí, antes de evaluar las condiciones de los nodos. |
-| 131 | `modo_warning,` | Y, en ese caso, se muestra el aviso de que `modo` está obsoleto. |
-| 132 | `micro_xrce_agent,` | Después se arranca el agente DDS. |
-| 133 | `target_vehicle_odometry_subscriber_node,` | Después este nodo. |
-| 134 | `target_tf2_odometry_node,` | Después este. |
-| 135 | `interceptor_vehicle_odometry_subscriber_node,` | Después este. |
-| 136 | `interceptor_tf2_odometry_node,` | Después este. |
-| 137 | `pursuit_mode_node,` | Este solo arranca de verdad si `mode:=pursuit`. |
-| 138 | `PN_mode_node,` | Y este solo si `mode:=pn`. |
-| 139 | `])` | Cierra la lista y la llamada a `LaunchDescription`. |
+| 1 | `#!/usr/bin/env python` | *Shebang*: lets the file run directly as a Python script on Unix systems. |
+| 3 | `"""` | Opens a docstring: a multi-line comment that documents the file. |
+| 4 | `Launch file for the interceptor/target scenario.` | Descriptive text, not run. |
+| 6 | `Starts the Micro XRCE-DDS agent, the 4 odometry/diagnostic nodes` | Sums up what this launch starts: the DDS agent and the 4 odometry/diagnostic nodes. |
+| 7 | `(two instances of vehicle_odometry_subscriber, one per vehicle, plus` | Names those nodes: two instances of the diagnostic subscriber, one per vehicle. |
+| 8 | `target_tf2_odometry and interceptor_tf2_odometry) and a single guidance` | Completes the list with the two tf2 converters and adds that only one guidance mode is launched. |
+| 9 | `mode, chosen with the argument mode:=pn\|pursuit (pn by default).` | Says the mode is chosen with the `mode` argument, which accepts `pn` or `pursuit`, and is `pn` if not given. |
+| 10 | `The old name, modo:=, is accepted for now as an alias of mode.` | Notes that the old argument name, `modo`, still works for now as an alias of `mode`. |
+| 12 | `Usage example:` | Introduces the example invocation. |
+| 13 | `ros2 launch interceptor interceptor.launch.py  # same as mode:=pn` | Shortest invocation: without the argument the default, `pn`, is used. |
+| 14 | `ros2 launch interceptor interceptor.launch.py mode:=pursuit` | Same invocation choosing the other guidance mode. |
+| 16 | `PX4 is started by hand, each instance in its own terminal (from ~/PX4-Autopilot):` | Makes clear that PX4 isn't started from this file, and from which folder the following commands run. |
+| 17 | `interceptor (instance 0): make px4_sitl gz_x500` | Example command to start instance 0 (interceptor). |
+| 18 | `target (instance 1):` | Introduces the command for instance 1 (target). |
+| 19 | `GZ_IP=127.0.0.1 PX4_GZ_MODEL_POSE="0,20" PX4_SIM_MODEL=gz_x500 \` | Example command to start instance 1 (target), 20 m north of the interceptor (`PX4_GZ_MODEL_POSE="0,20"`); the backslash continues on the next line. |
+| 20 | `./build/px4_sitl_default/bin/px4 -i 1` | Rest of the instance 1 command. |
+| 22 | `On Ctrl-C, the launch takes about 5 s to close: on purpose, to give the` | Warns that closing with Ctrl-C takes about 5 s, and that it's intentional. |
+| 23 | `guidance mode time to unregister from PX4 before the agent dies.` | Explains why: to give the guidance mode time to unregister from PX4. |
+| 24 | `"""` | Closes the docstring. |
+| 26 | `import os` | Imports operating system utilities; only used here to expand `~`. |
+| 28 | `from launch import LaunchDescription` | Imports the class that represents "the list of actions to run". |
+| 29 | `from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, SetLaunchConfiguration` | Imports the action that declares a launch argument (`mode`, `modo`), the one that runs an arbitrary shell command (the DDS agent), the one that writes a message to the log (`LogInfo`) and the one that changes the value of an already declared argument (`SetLaunchConfiguration`). |
+| 30 | `from launch.conditions import IfCondition, UnlessCondition` | Imports the conditions that decide whether an action runs: `IfCondition` runs it if the expression is true and `UnlessCondition` if it's false. |
+| 31 | `from launch.substitutions import EqualsSubstitution, LaunchConfiguration` | Imports the substitution that compares two values at launch time (`EqualsSubstitution`) and the one that reads the value of a declared argument (`LaunchConfiguration`). |
+| 32 | `from launch_ros.actions import Node` | Imports the action that starts a ROS 2 node from a package. |
+| 34 | `MICRO_XRCE_DDS_AGENT_DIR = os.path.expanduser('~/Micro-XRCE-DDS-Agent')` | Expands `~` to the current user's absolute path and stores it in a constant. |
+| 37 | `def generate_launch_description():` | Defines the argument-less function that ROS 2 looks for and runs on `ros2 launch`. |
+| 39 | `mode_arg = DeclareLaunchArgument(` | Starts declaring the `mode` launch argument. |
+| 40 | `'mode',` | Argument name: passed as `mode:=<value>` on the command line. |
+| 41 | `default_value='pn',` | Value the argument takes if not given on the command line: `PN_mode` is registered. |
+| 42 | `choices=['pn', 'pursuit'],` | Restricts the valid values to `pn` and `pursuit`; with `default_value`, any value outside that list is an error. |
+| 43 | `description=(` | Starts the argument description (shown with `ros2 launch interceptor interceptor.launch.py --show-args`). |
+| 44 | `'Guidance mode registered in PX4 (pn = PN mode, pursuit = Pursuit '` | First part of the description text. |
+| 45 | `'Intercept); only one is launched. Default: pn.'` | Second part: makes clear only one mode is launched and which one is the default. |
+| 46 | `),` | Closes the tuple of concatenated `description` strings. |
+| 47 | `)` | Closes the `DeclareLaunchArgument` call. |
+| 49 | `# Temporary alias for the old argument name. If modo:= is given, its value` | Comment: what follows is a temporary alias for the old name, `modo`, and if it's given, its value replaces `mode`. |
+| 50 | `# replaces mode. Remove once modo:= is no longer used anywhere.` | Continues the comment: the alias will be removed once nobody uses `modo:=` any more. |
+| 51 | `modo_arg = DeclareLaunchArgument(` | Starts declaring the `modo` argument, which only exists for compatibility. |
+| 52 | `'modo',` | Name of the old argument: `modo:=<value>`. |
+| 53 | `default_value='',` | Defaults to the empty string, which here means "not given". |
+| 54 | `choices=['', 'pn', 'pursuit'],` | Valid values: empty, `pn` or `pursuit`; any other value is an error, just like with `mode`. |
+| 55 | `description='Deprecated: temporary alias of mode. Use mode:=pn\|pursuit.',` | Description shown with `--show-args`: warns that it's deprecated and what to use instead. |
+| 56 | `)` | Closes the `DeclareLaunchArgument` call. |
+| 57 | `modo_given = UnlessCondition(EqualsSubstitution(LaunchConfiguration('modo'), ''))` | Stores the condition "`modo` is not empty" (the user passed `modo:=`) in a variable; it's reused by the next two actions. |
+| 58 | `modo_alias = SetLaunchConfiguration('mode', LaunchConfiguration('modo'), condition=modo_given)` | If `modo:=` was given, copies its value into `mode`. Since this action comes before the nodes in the list, the node conditions already see the copied value. |
+| 59 | `modo_warning = LogInfo(` | Starts building an action that writes a message to the launch log. |
+| 60 | `msg='The modo:= argument is deprecated; use mode:= instead.',` | Warning text: `modo:=` is deprecated and `mode:=` should be used. |
+| 61 | `condition=modo_given,` | The warning is only shown if `modo:=` was given. |
+| 62 | `)` | Closes the `LogInfo` call. |
+| 64 | `# The agent ignores SIGINT to stay alive after Ctrl-C until the launch escalates to` | Comment: explains why the agent ignores SIGINT. |
+| 65 | ``# SIGTERM: that gives the guidance mode time to send `Unregistering` to PX4.`` | Continues the comment: it gives the guidance mode time to unregister from PX4. |
+| 66 | `micro_xrce_agent = ExecuteProcess(` | Starts building the action that will start the DDS agent. |
+| 67 | `cmd=[["trap '' INT; exec ./build/MicroXRCEAgent udp4 -p 8888"]],` | Command to run: `trap '' INT` makes the process ignore SIGINT (Ctrl-C doesn't kill it); `exec` replaces the shell with the agent binary, UDP/IPv4 transport, port 8888, so the shutdown signal (SIGTERM) reaches it directly. |
+| 68 | `shell=True,` | Runs that command through a shell, as if typed in a terminal. |
+| 69 | `cwd=MICRO_XRCE_DDS_AGENT_DIR,` | Working folder where the command runs (`build/MicroXRCEAgent` must exist inside it). |
+| 70 | `output='log',` | The process output goes to the ROS 2 logs, not straight to the terminal. |
+| 71 | `)` | Closes the `ExecuteProcess` call. |
+| 73 | `target_vehicle_odometry_subscriber_node = Node(` | Starts building the block of the first node. |
+| 74 | `package='interceptor',` | ROS 2 package where the executable is found. |
+| 75 | `executable='vehicle_odometry_subscriber',` | Name of the binary to run: the parametrised diagnostic subscriber (see [Nodes and topics](Nodes-and-topics.md)). |
+| 76 | `name='target_vehicle_odometry_subscriber',` | Visible node name in `ros2 node list`, different from the executable. |
+| 77 | `parameters=[{` | Starts the parameter list of this instance. |
+| 78 | `'vehicle_name': 'target',` | Sets `vehicle_name` to `target`. |
+| 79 | `'odometry_topic': '/px4_1/fmu/out/vehicle_odometry',` | Sets `odometry_topic` to instance 1's topic (target): this way the node name and the topic it listens to match. |
+| 80 | `}],` | Closes the parameter list. |
+| 81 | `output='log',` | Its output goes to the logs, not the screen. |
+| 82 | `)` | Closes this node's block. |
+| 84 | `target_tf2_odometry_node = Node(` | Starts the block of the target's tf2 converter. |
+| 85 | `package='interceptor',` | Same as line 74. |
+| 86 | `executable='target_tf2_odometry',` | Executable that converts the target's odometry and publishes `target/base_link` and `target/velocity`. |
+| 87 | `output='screen',` | Here the output does go straight to the terminal (`screen`), unlike the diagnostics. |
+| 88 | `)` | Closes the block. |
+| 90 | `interceptor_vehicle_odometry_subscriber_node = Node(` | Starts the block of the second diagnostic subscriber. |
+| 91 | `package='interceptor',` | Same as above. |
+| 92 | `executable='vehicle_odometry_subscriber',` | Same executable as the first instance, with other parameters. |
+| 93 | `name='interceptor_vehicle_odometry_subscriber',` | Visible name of this instance. |
+| 94 | `parameters=[{` | Starts the parameter list. |
+| 95 | `'vehicle_name': 'interceptor',` | Sets `vehicle_name` to `interceptor`. |
+| 96 | `'odometry_topic': '/fmu/out/vehicle_odometry',` | Sets `odometry_topic` to instance 0's topic (interceptor). |
+| 97 | `}],` | Closes the parameter list. |
+| 98 | `output='log',` | Output to the logs. |
+| 99 | `)` | Closes the block. |
+| 101 | `interceptor_tf2_odometry_node = Node(` | Starts the block of the interceptor's tf2 converter. |
+| 102 | `package='interceptor',` | Same as above. |
+| 103 | `executable='interceptor_tf2_odometry',` | Publishes `map -> interceptor/base_link`. |
+| 104 | `output='screen',` | Output to the screen. |
+| 105 | `)` | Closes the block. |
+| 107 | `# tf2_listener_node = Node(` | Commented-out line: it starts with `#`, so Python ignores it completely. |
+| 108 | `# package='interceptor',` | Commented out, ignored. |
+| 109 | `# executable='tf2_listener',` | Commented out, ignored. |
+| 110 | `# output='screen',` | Commented out, ignored. |
+| 111 | `# )` | Commented out, ignored. This whole 5-line block is disabled: that's why `tf2_listener` doesn't start with the default launch. |
+| 113 | `pursuit_mode_node = Node(` | Starts the block of the pure pursuit mode. |
+| 114 | `package='interceptor',` | Same as above. |
+| 115 | `executable='pursuit_mode',` | Executable of the `pursuit_mode` mode. |
+| 116 | `output='screen',` | Output to the screen. |
+| 117 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('mode'), 'pursuit')),` | This node only starts if `mode` is `pursuit`: it compares the argument value with the string `'pursuit'`. |
+| 118 | `)` | Closes the block. |
+| 120 | `PN_mode_node = Node(` | Starts the block of the proportional navigation mode. |
+| 121 | `package='interceptor',` | Same as above. |
+| 122 | `executable='PN_mode',` | Executable of the `PN_mode` mode. |
+| 123 | `output='screen',` | Output to the screen. |
+| 124 | `condition=IfCondition(EqualsSubstitution(LaunchConfiguration('mode'), 'pn')),` | This node only starts if `mode` is `pn`. |
+| 125 | `)` | Closes the block. |
+| 127 | `return LaunchDescription([` | Builds and returns the list of actions ROS 2 will run; the order of this list is the start-up order. |
+| 128 | `mode_arg,` | First the `mode` argument is declared (it must come before it's used in the node conditions). |
+| 129 | `modo_arg,` | Then the `modo` alias. |
+| 130 | `modo_alias,` | If `modo:=` was given, its value is copied into `mode` here, before the node conditions are evaluated. |
+| 131 | `modo_warning,` | And, in that case, the warning that `modo` is deprecated is shown. |
+| 132 | `micro_xrce_agent,` | Then the DDS agent is started. |
+| 133 | `target_vehicle_odometry_subscriber_node,` | Then this node. |
+| 134 | `target_tf2_odometry_node,` | Then this one. |
+| 135 | `interceptor_vehicle_odometry_subscriber_node,` | Then this one. |
+| 136 | `interceptor_tf2_odometry_node,` | Then this one. |
+| 137 | `pursuit_mode_node,` | This one only really starts if `mode:=pursuit`. |
+| 138 | `PN_mode_node,` | And this one only if `mode:=pn`. |
+| 139 | `])` | Closes the list and the `LaunchDescription` call. |
 
-`tf2_listener_node` no aparece en esta lista final porque su variable ni
-siquiera llegó a crearse (está comentada arriba): no basta con comentar el
-bloque, si estuviera descomentado también habría que añadirlo aquí para que se
-ejecute. `pursuit_mode_node` y `PN_mode_node` sí están siempre en la lista,
-pero su `condition` decide en tiempo de lanzamiento si el proceso llega a
-arrancar; solo uno de los dos lo hace, según `mode`. PX4 SITL no aparece en
-ningún punto de este archivo: se arranca a mano en otras terminales, como
-recuerda el docstring del principio.
+`tf2_listener_node` isn't in this final list because its variable was never
+even created (it's commented out above): commenting the block isn't the only
+step; if it were uncommented, it would also have to be added here to run.
+`pursuit_mode_node` and `PN_mode_node` are always in the list, but their
+`condition` decides at launch time whether the process actually starts; only
+one of them does, depending on `mode`. PX4 SITL doesn't appear anywhere in this
+file: it's started by hand in other terminals, as the docstring at the top
+reminds you.
 
-Con esto terminan los archivos de construcción y arranque. Continúa con
-[Nodos de odometría y tf2, línea por línea](Line-by-line-odometry-nodes.md).
+That's all for the build and start-up files. Carry on with
+[Odometry and tf2 nodes, line by line](Line-by-line-odometry-nodes.md).
 
 ---
 
-🏠 [Inicio](Home.md) · ⬅️ Anterior: [Lectura guiada del código](Code-walkthrough.md) · ➡️ Siguiente: [Nodos de odometría y tf2, línea por línea](Line-by-line-odometry-nodes.md)
+🏠 [Home](Home.md) · ⬅️ Previous: [Code walkthrough](Code-walkthrough.md) · ➡️ Next: [Line by line: odometry and tf2 nodes](Line-by-line-odometry-nodes.md)

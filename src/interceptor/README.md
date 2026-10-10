@@ -58,10 +58,10 @@ El launch no arranca PX4: las dos instancias SITL se lanzan a mano antes, cada u
 (`source /opt/ros/jazzy/setup.bash` y `source install/setup.bash` desde la carpeta del workspace):
 
 ```bash
-ros2 launch interceptor interceptor.launch.py modo:=pn
+ros2 launch interceptor interceptor.launch.py mode:=pn
 ```
 
-El argumento `modo` es opcional (`pn` por defecto, o `pursuit`): solo se lanza el modo de guiado elegido.
+El argumento `mode` es opcional (`pn` por defecto, o `pursuit`): solo se lanza el modo de guiado elegido. `modo:=` se acepta temporalmente como alias.
 
 O ejecutar un nodo individual, por ejemplo:
 

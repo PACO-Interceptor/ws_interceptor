@@ -37,16 +37,17 @@ tags and publishes GitHub releases after CI succeeds on `main`.
 
 Run everything:
 ```bash
-ros2 launch interceptor interceptor.launch.py modo:=pn
+ros2 launch interceptor interceptor.launch.py mode:=pn
 ```
-`modo` is an optional launch argument, `pn` (the default) or `pursuit`: both mode nodes are in the
+`mode` is an optional launch argument, `pn` (the default) or `pursuit` (the old name `modo` is
+still accepted as a temporary alias): both mode nodes are in the
 `LaunchDescription`, each behind an `IfCondition`, so only the chosen one is started. Or a single
 node:
 `ros2 run interceptor <executable>` (executable names = source file names, e.g.
 `pursuit_mode`, `PN_mode`).
 
 The launch file starts the Micro XRCE-DDS Agent (expected at `~/Micro-XRCE-DDS-Agent`), the
-interceptor package's odometry/diagnostic nodes, and the one guidance mode picked with `modo`. It
+interceptor package's odometry/diagnostic nodes, and the one guidance mode picked with `mode`. It
 does **not** start PX4 SITL itself — that's run manually from
 `~/PX4-Autopilot`, checked out at commit `14b3f44081` (the one the vendored `px4_msgs` matches;
 see `docs/wiki/Installation-and-build.md`):

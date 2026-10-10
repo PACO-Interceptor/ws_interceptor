@@ -43,7 +43,7 @@ del interceptor. Primero se debe entender qué interfaz ofrece y cambiar solo
 | [`README.md`](../../src/interceptor/README.md) | Guía breve de instalación y enlaces oficiales. |
 | [`LICENSE`](../../src/interceptor/LICENSE) | Condiciones legales del paquete propio. |
 | [`.gitignore`](../../src/interceptor/.gitignore) | Evita guardar artefactos locales del paquete. |
-| [`launch/interceptor.launch.py`](../../src/interceptor/launch/interceptor.launch.py) | Inicia agente DDS, conversores y diagnóstico, y un solo modo elegido con `modo:=pn\|pursuit`. |
+| [`launch/interceptor.launch.py`](../../src/interceptor/launch/interceptor.launch.py) | Inicia agente DDS, conversores y diagnóstico, y un solo modo elegido con `mode:=pn\|pursuit`. |
 | [`src/interceptor_tf2_odometry.cpp`](../../src/interceptor/src/interceptor_tf2_odometry.cpp) | Convierte odometría de PX4 y publica el frame del interceptor. |
 | [`src/target_tf2_odometry.cpp`](../../src/interceptor/src/target_tf2_odometry.cpp) | Publica el frame del target (desplazado al origen del interceptor) y su velocidad ENU. |
 | [`src/pursuit_mode.cpp`](../../src/interceptor/src/pursuit_mode.cpp) | Modo de persecución pura basado en posición. |

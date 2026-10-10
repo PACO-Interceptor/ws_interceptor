@@ -1,102 +1,100 @@
 # ws_interceptor
 
-`ws_interceptor` es un workspace de ROS 2 que conecta dos vehículos PX4
-simulados: un **interceptor**, que intenta alcanzar a un **target**. El
-código propio está en [`src/interceptor`](../../src/interceptor). El
-workspace también contiene tres dependencias vendorizadas: `px4_msgs`,
-`px4_ros_com` y `px4-ros2-interface-lib`, que proporcionan los mensajes PX4,
-las conversiones de coordenadas y la biblioteca para registrar modos de
-vuelo personalizados.
+`ws_interceptor` is a ROS 2 workspace that connects two simulated PX4
+vehicles: an **interceptor**, which tries to reach a **target**. Our own code
+is in [`src/interceptor`](../../src/interceptor). The workspace also contains
+three vendored dependencies: `px4_msgs`, `px4_ros_com` and
+`px4-ros2-interface-lib`, which provide the PX4 messages, the coordinate
+conversions and the library to register custom flight modes.
 
-## Resumen en una página
+## One-page summary
 
-PX4 publica odometría, los nodos la convierten y la relacionan mediante tf2,
-y un modo de guiado calcula un setpoint que PX4 intenta seguir. Si es tu
-primera vez aquí, esto es todo lo esencial antes de entrar en detalle:
+PX4 publishes odometry, the nodes convert it and relate it through tf2, and a
+guidance mode computes a setpoint that PX4 tries to follow. If this is your
+first time here, this is all you need before going into detail:
 
-- Hay dos drones simulados con PX4: el **interceptor** (el que persigue) y el
-  **target** (el perseguido).
-- Cada PX4 publica su posición y velocidad (`VehicleOdometry`) en un tópico
-  ROS 2 distinto: instancia `0` para el interceptor, instancia `1` para el
-  target.
-- Dos nodos (`interceptor_tf2_odometry`, `target_tf2_odometry`) convierten
-  esos datos de las coordenadas de PX4 (NED) a las de ROS (ENU) y publican el
-  resultado como transforms tf2: "dónde está cada dron respecto a un origen
-  común llamado `map`".
-- El nodo del target también publica su velocidad en un tópico aparte
-  (`target/velocity`), porque tf2 solo guarda posición y orientación, no
-  velocidad.
-- Dos modos de vuelo (`pursuit_mode` y `PN_mode`) leen esa posición —y, en el
-  caso de PN, también la velocidad— y calculan hacia dónde debe moverse el
-  interceptor. Se lo entregan a PX4 como un *setpoint* (una referencia de
-  velocidad/aceleración); PX4 se encarga de moverlo de verdad.
-- `pursuit_mode` es el más simple: apunta directo hacia la posición actual
-  del target. `PN_mode` es más sofisticado: anticipa el movimiento del
-  target usando su velocidad (navegación proporcional).
-- El paquete incluye además nodos auxiliares de inspección y diagnóstico, que
-  solo imprimen datos por consola sin intervenir en el control de vuelo.
-- Nada de esto arranca PX4 por ti: hay que lanzar las dos simulaciones PX4 a
-  mano. El `launch` de este proyecto sí arranca el Micro XRCE-DDS Agent y los
-  nodos propios, pero necesita que el agente ya esté compilado en
+- There are two drones simulated with PX4: the **interceptor** (the one that
+  chases) and the **target** (the one being chased).
+- Each PX4 publishes its position and velocity (`VehicleOdometry`) on a
+  different ROS 2 topic: instance `0` for the interceptor, instance `1` for
+  the target.
+- Two nodes (`interceptor_tf2_odometry`, `target_tf2_odometry`) convert that
+  data from PX4 coordinates (NED) to ROS coordinates (ENU) and publish the
+  result as tf2 transforms: "where each drone is relative to a common origin
+  called `map`".
+- The target node also publishes its velocity on a separate topic
+  (`target/velocity`), because tf2 only stores position and orientation, not
+  velocity.
+- Two flight modes (`pursuit_mode` and `PN_mode`) read that position (and, for
+  PN, the velocity too) and compute where the interceptor should move. They
+  hand it to PX4 as a *setpoint* (a velocity/acceleration reference); PX4 does
+  the actual moving.
+- `pursuit_mode` is the simplest: it points straight at the target's current
+  position. `PN_mode` is more elaborate: it anticipates the target's motion
+  using its velocity (proportional navigation).
+- The package also includes helper nodes for inspection and diagnostics, which
+  only print data to the console and don't take part in flight control.
+- None of this starts PX4 for you: the two PX4 simulations are started by
+  hand. This project's `launch` does start the Micro XRCE-DDS Agent and our
+  nodes, but it needs the agent to be already built in
   `~/Micro-XRCE-DDS-Agent`.
 
-Con esto ya tienes la idea general. El resto de la wiki explica cada pieza
-con más detalle, con diagramas y con los comandos exactos para instalar,
-ejecutar y depurar.
+That's the general idea. The rest of the wiki explains each piece in more
+detail, with diagrams and the exact commands to install, run and debug.
 
-## Recorrido recomendado
+## Suggested reading order
 
-La documentación está ordenada para seguir el sistema de extremo a extremo:
+The documentation follows the system from end to end:
 
-1. [Instalación y compilación](Installation-and-build.md)
-2. [Ejecución de la simulación](Simulation.md)
-3. [Arquitectura y flujo de datos](Architecture.md)
-4. [Nodos de odometría y diagnóstico](Nodes-and-topics.md)
-5. [Modos de guiado](Guidance-modes.md)
-6. [Lectura guiada del código](Code-walkthrough.md)
-7. [Análisis línea por línea: proyecto y construcción](Line-by-line-project-and-build-files.md)
-8. [Análisis línea por línea: nodos de odometría y tf2](Line-by-line-odometry-nodes.md)
-9. [Análisis línea por línea: modos de guiado](Line-by-line-guidance-modes.md)
-10. [Mapa del workspace y dependencias](Workspace-file-map.md)
-11. [Referencia rápida y solución de problemas](Quick-reference-and-troubleshooting.md)
+1. [Installation and build](Installation-and-build.md)
+2. [Running the simulation](Simulation.md)
+3. [Architecture and data flow](Architecture.md)
+4. [Nodes, topics and diagnostics](Nodes-and-topics.md)
+5. [Guidance modes](Guidance-modes.md)
+6. [Code walkthrough](Code-walkthrough.md)
+7. [Line by line: project and build files](Line-by-line-project-and-build-files.md)
+8. [Line by line: odometry and tf2 nodes](Line-by-line-odometry-nodes.md)
+9. [Line by line: guidance modes](Line-by-line-guidance-modes.md)
+10. [Workspace map and dependencies](Workspace-file-map.md)
+11. [Quick reference and troubleshooting](Quick-reference-and-troubleshooting.md)
 
-## Glosario mínimo
+## Short glossary
 
-Dieciséis palabras que se repiten en toda la wiki. No sustituyen a las
-explicaciones de cada página, pero sirven para no perderse si llegas
-directamente a una página intermedia sin leer el resumen de arriba:
+Sixteen words that come up all over the wiki. They don't replace the
+explanations on each page, but they help if you land directly on a page in
+the middle without reading the summary above:
 
-| Concepto | Significado en este proyecto |
+| Term | Meaning in this project |
 | --- | --- |
-| Nodo | Programa ROS 2 que realiza una tarea concreta. |
-| Modo (de vuelo) | Estrategia de guiado registrada en PX4 (`pursuit_mode`, `PN_mode`). No es lo mismo que un nodo, aunque cada modo se implementa dentro de uno — fíjate bien: "nodo" y "modo" solo se diferencian en una letra. |
-| Tópico | Canal con nombre por el que se intercambian mensajes. |
-| Mensaje | Estructura de datos que viaja por un tópico. |
-| Publisher | Lo que crea un nodo para **enviar** mensajes a un tópico. |
-| Suscripción (subscriber) | Lo que crea un nodo para **recibir** mensajes de un tópico; cada mensaje que llega dispara una callback. |
-| Timer | Dispara una callback repetidamente a intervalos fijos (por ejemplo, cada 50 ms), sin depender de que llegue ningún mensaje. |
-| Logging | El mecanismo para imprimir mensajes de diagnóstico (`RCLCPP_INFO`, `RCLCPP_WARN`...) en la consola o en los logs. |
-| Callback | Función que no llamas tú: se la entregas a ROS 2 (al suscribirte a un tópico, al crear un timer...) y es ROS 2 quien la ejecuta automáticamente cada vez que llega un mensaje o dispara el temporizador. |
-| DDS | Protocolo que reparte los mensajes entre nodos sin que se conozcan directamente entre sí. PX4 usa una versión ligera (uXRCE-DDS) que el Micro XRCE-DDS Agent traduce al DDS que hablan los nodos ROS 2. |
-| Frame (marco) | Sistema de referencia con nombre (`map`, `interceptor/base_link`, `target/base_link`) que tf2 usa para ubicar cada vehículo. |
-| tf2 | Sistema que relaciona posiciones y orientaciones entre marcos. |
-| Odometría | Posición, orientación y velocidad estimadas. |
-| Setpoint | Referencia de movimiento que se entrega a PX4. |
-| PX4 | Piloto automático de código abierto: el software que, dentro del vehículo, estima su posición y controla los motores para seguir un setpoint. Más detalle en [Instalación y compilación](Installation-and-build.md). |
-| SITL | PX4 ejecutado como software en el ordenador, sin hardware real, simulando sensores y física. |
+| Node | A ROS 2 program that does one specific job. |
+| (Flight) mode | A guidance strategy registered in PX4 (`pursuit_mode`, `PN_mode`). It is not the same as a node, although each mode lives inside one. |
+| Topic | A named channel over which messages are exchanged. |
+| Message | A data structure that travels over a topic. |
+| Publisher | What a node creates to **send** messages to a topic. |
+| Subscription (subscriber) | What a node creates to **receive** messages from a topic; each incoming message triggers a callback. |
+| Timer | Triggers a callback repeatedly at fixed intervals (for example, every 50 ms), without waiting for any message. |
+| Logging | The mechanism for printing diagnostic messages (`RCLCPP_INFO`, `RCLCPP_WARN`...) to the console or the logs. |
+| Callback | A function you don't call yourself: you hand it to ROS 2 (when subscribing to a topic, creating a timer...) and ROS 2 runs it automatically every time a message arrives or the timer fires. |
+| DDS | The protocol that delivers messages between nodes without them knowing each other directly. PX4 uses a lightweight version (uXRCE-DDS) that the Micro XRCE-DDS Agent translates into the DDS spoken by ROS 2 nodes. |
+| Frame | A named reference system (`map`, `interceptor/base_link`, `target/base_link`) that tf2 uses to place each vehicle. |
+| tf2 | The system that relates positions and orientations between frames. |
+| Odometry | Estimated position, orientation and velocity. |
+| Setpoint | A motion reference handed to PX4. |
+| PX4 | Open-source autopilot: the software that, inside the vehicle, estimates its position and drives the motors to follow a setpoint. More detail in [Installation and build](Installation-and-build.md). |
+| SITL | PX4 running as software on the computer, without real hardware, with simulated sensors and physics. |
 
-Esto es solo un glosario de bolsillo; los términos se explican con más
-detalle donde hace falta en cada página. Para comandos y pasos de
-diagnóstico, usa la [referencia rápida y solución de problemas](Quick-reference-and-troubleshooting.md)
-— es una página distinta, centrada en órdenes de terminal, no en conceptos.
+This is only a pocket glossary; terms are explained in more detail where
+needed on each page. For commands and troubleshooting steps, use the
+[quick reference and troubleshooting](Quick-reference-and-troubleshooting.md)
+page, which is about terminal commands rather than concepts.
 
-## Límites y seguridad
+## Limits and safety
 
-Esta wiki documenta el comportamiento actual del repositorio; no sustituye la
-documentación oficial de ROS 2, PX4 ni la teoría de control. El proyecto debe
-probarse en simulación antes de cualquier uso con hardware real, respetando las
-medidas de seguridad y los límites configurados en PX4.
+This wiki documents the current behaviour of the repository; it doesn't
+replace the official ROS 2 or PX4 documentation, or control theory. The
+project must be tested in simulation before any use with real hardware,
+following the safety measures and limits configured in PX4.
 
 ---
 
-➡️ Siguiente: [Instalación y compilación](Installation-and-build.md)
+➡️ Next: [Installation and build](Installation-and-build.md)
